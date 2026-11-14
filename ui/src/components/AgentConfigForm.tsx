@@ -1,6 +1,8 @@
 import { useAdapterLoginCancellation } from "./useAdapterLoginCancellation";
 import { ACCOUNT_BOUND_MODEL_DISCOVERY_QUERY_OPTIONS, isAccountBoundAcpxAgent } from "@/lib/native-model-catalog";
 import { useConnectionModels } from "./ai-connections/useConnectionModels";
+import { resolveConnectionModelLinkage } from "@/lib/connection-model-linkage";
+import { aiConnectionsApi } from "@/api/ai-connections";
 import { agentHarnessType, agentRunner, pilibalaRunnerProfileForHarness, normalizeClaudeRunnerOptions, type AgentRunnerChoice } from "@pilibalaai/shared";
 import { adaptersApi } from "../api/adapters";
 import { canQualifyRunnerEnvironment, qualifyRunnerEnvironment } from "../lib/qualify-claude-setup";
@@ -1075,6 +1077,20 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const accountBoundCatalog = isAccountBoundAcpxAgent(runnerAcpxAgent);
   const modelCacheIdentity = accountBoundCatalog ? `${modelProvider}:${runnerAcpxAgent}:${isCreate ? "new" : props.agent.id}:${JSON.stringify(modelAiBinding ?? null)}` : runnerAcpxAgent ? `${modelProvider}:${runnerAcpxAgent}` : modelProvider;
   const connectionModels = useConnectionModels(isExternalRunner ? null : selectedCompanyId, isCreate ? undefined : modelAiBinding, aiRoutingHarness(adapterType, runnerProvider, runnerAcpxAgent));
+  // Connection ↔ model linkage inputs: the company's AI connections and the
+  // chosen adapter-catalog provider's baseUrl. When the chosen model is not
+  // served by the bound connection's catalog (the save rejects it), the effect
+  // below rebinds to the compatible connection that does serve it.
+  const linkageConnections = useQuery({
+    queryKey: ["ai-connections-linkage", selectedCompanyId],
+    queryFn: () => aiConnectionsApi.list(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId && !isCreate && !isExternalRunner && hasProviderCatalog),
+    staleTime: 15_000,
+    retry: false,
+  });
+  const linkageProviderBaseUrl = (adapterProviders.data ?? []).find(
+    (provider) => provider.name === selectedModelProvider,
+  )?.baseUrl ?? null;
   // Fetch adapter models for the effective provider, including unsaved changes.
   const modelAdapterType = accountBoundCatalog ? "pilibala_runner" : isRunnerHarness ? harnessType : adapterType;
   const modelQueryKey = selectedCompanyId
@@ -1099,6 +1115,9 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     if (accountModelScope && selectedCompanyId && !isExternalRunner && !connectionModels) void refreshConnectionModels();
   }, [accountModelScope, selectedCompanyId, isExternalRunner, connectionModels, refreshConnectionModels]);
   const [refreshModelsError, setRefreshModelsError] = useState<string | null>(null);
+  // Set when the linkage effect rebinds the AI connection so the form can say
+  // so instead of rebinding silently; cleared once the model is served again.
+  const [autoReboundConnection, setAutoReboundConnection] = useState<string | null>(null);
   const [refreshingModels, setRefreshingModels] = useState(false);
   const models = connectionModels?.models ?? fetchedModels ?? externalModels ?? [];
   // `useConnectionModels` owns its own query and exposes only `error`; the
@@ -1472,6 +1491,43 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     ? val!.model ?? ""
     : eff("adapterConfig", "model", String(config.model ?? ""));
   const currentModelId = typeof currentModelValue === "string" ? currentModelValue : "";
+
+  // Connection ↔ model linkage (managed connections only): when the chosen
+  // model is not in the bound connection's catalog, the save rejects it with
+  // "The model … is not served by the bound AI connection …". Identify the
+  // compatible company connection that serves the model — preferring the one
+  // matching the chosen provider's baseUrl — and rebind to it, stating the
+  // switch instead of leaving the user to find the connection picker.
+  useEffect(() => {
+    if (isCreate || isExternalRunner || !selectedCompanyId) return;
+    const accounts = linkageConnections.data;
+    if (!accounts) return;
+    const suggestion = resolveConnectionModelLinkage({
+      harness: aiRoutingHarness(adapterType, runnerProvider, runnerAcpxAgent),
+      model: currentModelId || undefined,
+      binding: modelAiBinding,
+      connections: accounts.connections,
+      currentUserId: accounts.currentUserId,
+      providerBaseUrl: linkageProviderBaseUrl,
+    });
+    if (!suggestion) {
+      // Keep the notice visible for this editing session even though the
+      // mismatch is resolved — clearing it immediately would hide what just
+      // happened. It resets when the form unmounts.
+      return;
+    }
+    if (autoReboundConnection === suggestion.connectionName) return;
+    mark("runtime", "runtimeConfig", { ...runtimeConfig, aiConnection: suggestion.binding });
+    if (adapterType === "hermes_local") {
+      // Same stale-provider rule as the manual bind handler: the managed
+      // connection owns provider routing, and the hermes pair guard validates
+      // (provider, model) against the provider's live catalog, which would
+      // reject a model the connection serves.
+      mark("adapterConfig", "provider", undefined);
+    }
+    setAutoReboundConnection(suggestion.connectionName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mark/runtimeConfig are the write target, not data inputs; the guard on autoReboundConnection prevents write loops
+  }, [currentModelId, modelAiBinding, linkageConnections.data, linkageProviderBaseUrl, runnerProvider, runnerAcpxAgent, adapterType, isCreate, isExternalRunner, selectedCompanyId, autoReboundConnection]);
 
   async function handleRefreshModels() {
     if (!selectedCompanyId) return;
@@ -1953,8 +2009,20 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   model={String(eff("adapterConfig", "model", config.model) ?? "")}
                   environmentId={currentDefaultEnvironmentId || undefined}
                   legacy
-                  onChange={binding => mark("runtime", "runtimeConfig", { ...runtimeConfig, aiConnection: binding })}
-                  onClear={() => mark("runtime", "runtimeConfig", { ...runtimeConfig, aiConnection: null })}
+                  onChange={binding => {
+                    mark("runtime", "runtimeConfig", { ...runtimeConfig, aiConnection: binding });
+                    // A managed connection owns provider routing at run time
+                    // (the projection overrides adapterConfig.provider), so a
+                    // stale provider value must not survive a bind change —
+                    // the hermes pair guard validates (provider, model)
+                    // against the provider's live catalog and would reject a
+                    // model the connection serves.
+                    mark("adapterConfig", "provider", undefined);
+                  }}
+                  onClear={() => {
+                    mark("runtime", "runtimeConfig", { ...runtimeConfig, aiConnection: null });
+                    mark("adapterConfig", "provider", undefined);
+                  }}
                 />
               </details>
             ) : (
@@ -2124,6 +2192,11 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   retrying={fetchedModelsView.isFetching}
                 />
               ) : null}
+              {autoReboundConnection && (
+                <p className="text-xs text-muted-foreground">
+                  Switched the AI connection to “{autoReboundConnection}” so the selected model is served by its catalog.
+                </p>
+              )}
               {adapterType === "opencode_local"
                 && !connectionModels
                 && currentDefaultEnvironment

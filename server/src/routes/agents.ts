@@ -3250,7 +3250,9 @@ export function agentRoutes(
     const routing = validateModelCatalog ? aiConnectionMetadataSchema.parse(selection.connection.config.ai).routing : undefined;
     if (validateModelCatalog && routing?.models.length && !routing.models.some(model =>
       aiRoutingModel(routing, agentHarnessType(adapterType, config), model.id) === config.model)) {
-      throw unprocessable("Choose a default model available on the selected connection");
+      throw unprocessable(
+        `The model "${config.model}" is not served by the bound AI connection "${selection.connection.name}". Pick a model from that connection, or connect the AI connection that serves this model.`,
+      );
     }
     const testEnvironmentId = probe !== "none" || binding.provider === "github"
       ? await resolveAdapterTestEnvironmentId(companyId, environmentId, binding.provider === "github")
@@ -5793,10 +5795,30 @@ export function agentRoutes(
           rawEffectiveAdapterConfig,
         ),
       );
+      // A managed AI connection owns provider routing at run time (the gateway
+      // projection overrides adapterConfig.provider), so a stale provider value
+      // must not drive the hermes (provider, model) pair guard — it would
+      // reject a model the bound connection serves with "not served by
+      // provider …". Once a binding exists, the connection's catalog is the
+      // pair's truth (validated separately in validateManagedAgentBinding).
+      const effectiveAdapterConfigForPersistence = (() => {
+        if (requestedAdapterType !== "hermes_local") return effectiveAdapterConfig;
+        const effectiveAiBinding = aiRuntimeConnectionBindingSchema.safeParse(
+          requestedRuntimeConfig ? requestedRuntimeConfig.aiConnection : existing.runtimeConfig.aiConnection,
+        ).data;
+        if (!effectiveAiBinding || effectiveAiBinding.mode === "router" || !("provider" in effectiveAdapterConfig)) {
+          return effectiveAdapterConfig;
+        }
+        // Copy: rawEffectiveAdapterConfig may alias the persisted record when
+        // the patch does not carry an adapterConfig of its own.
+        const withoutProvider = { ...effectiveAdapterConfig };
+        delete withoutProvider.provider;
+        return withoutProvider;
+      })();
       const normalizedEffectiveAdapterConfig = await normalizeMediatedAdapterConfigForPersistence({
         companyId: existing.companyId,
         adapterType: requestedAdapterType,
-        adapterConfig: effectiveAdapterConfig,
+        adapterConfig: effectiveAdapterConfigForPersistence,
         setupOnly: existing.lifecycleHolds?.includes("setup"),
       });
       patchData.adapterConfig = syncInstructionsBundleConfigFromFilePath(existing, normalizedEffectiveAdapterConfig);

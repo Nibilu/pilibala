@@ -4962,4 +4962,56 @@ describe("AgentConfigForm model provider catalog", () => {
     const payload = result.onSave.mock.calls[0][0];
     expect(payload.adapterConfig).not.toHaveProperty("provider");
   });
+
+  it("rebinds the AI connection and clears the stale provider when the chosen model leaves the bound connection's catalog", async () => {
+    const nvidiaConnection = {
+      id: "00000000-0000-4000-8000-000000000a01", grantId: "00000000-0000-4000-8000-000000000a02", companyId: "company-1", provider: "openai", method: "api_key",
+      name: "个人 integrate.api.nvidia.com", ownership: "personal", ownerUserId: "you", isDefault: true, status: "connected",
+      routing: { kind: "gateway", protocol: "chat", auth: "bearer", baseUrl: "https://integrate.api.nvidia.com/v1", models: [{ id: "nvidia/model-3" }, { id: "nvidia/model-7" }] },
+    };
+    const magaaiChat = {
+      id: "00000000-0000-4000-8000-000000000b01", grantId: "00000000-0000-4000-8000-000000000b02", companyId: "company-1", provider: "openai", method: "api_key",
+      name: "Company magaai_chat", ownership: "shared", isDefault: false, status: "connected",
+      routing: { kind: "gateway", protocol: "chat", auth: "bearer", baseUrl: "https://api.magaai.shop", models: [{ id: "moonshotai/Kimi-K3.1-Pro" }, { id: "zai-org/GLM-5.3-Flash" }] },
+    };
+    const accountList = vi.spyOn(aiConnectionsApi, "list").mockResolvedValue({
+      currentUserId: "you", canManageConnections: true, connections: [nvidiaConnection, magaaiChat],
+    });
+    mockAgentsApi.adapterProviders.mockResolvedValue([
+      { name: "nvidia", label: "NVIDIA NIM", baseUrl: "https://integrate.api.nvidia.com/v1", envVars: [], fallbackModels: [] },
+      { name: "Magaai", label: "Magaai", baseUrl: "https://api.magaai.shop", envVars: [], fallbackModels: [] },
+    ]);
+    try {
+      const binding = { mode: "delegated", method: "api_key", provider: "openai", connectionId: "00000000-0000-4000-8000-000000000a01", grantId: "00000000-0000-4000-8000-000000000a02" } as const;
+      const result = await renderForm([makeEnvironment({ id: "local-1", name: "Local", driver: "local" })], {
+        adapterType: "hermes_local",
+        adapterConfig: { engine: "acp", provider: "nvidia", model: "nvidia/model-3" },
+        runtimeConfig: { aiConnection: binding },
+      });
+      roots.push(result.root);
+      await vi.waitFor(() => expect(accountList).toHaveBeenCalled());
+
+      // The saved model is served by the bound connection's catalog.
+      await clickByText(result.container, "nvidia/model-3");
+      const search = document.body.querySelector<HTMLInputElement>('[placeholder="Search models... (type to create)"]');
+      expect(search).not.toBeNull();
+      await act(() => setInputValue(search!, "moonshotai/Kimi-K3.1-Pro"));
+      await flushReact();
+      await clickElement(Array.from(document.body.querySelectorAll('[role="option"]')).find(option => option.textContent?.includes("Use manual model")));
+      await flushReact();
+
+      // The linkage states the rebind instead of doing it silently.
+      await vi.waitFor(() => expect(result.container.textContent).toContain("Company magaai_chat"));
+      await clickByText(result.container, "Save");
+      const payload = result.onSave.mock.calls[0][0];
+      // The stale nvidia provider must not survive: the managed connection
+      // owns provider routing, and the hermes pair guard would reject the
+      // magaai model against nvidia's live catalog.
+      expect(payload.adapterConfig).not.toHaveProperty("provider");
+      expect(payload.adapterConfig.model).toBe("moonshotai/Kimi-K3.1-Pro");
+      expect(payload.runtimeConfig.aiConnection).toEqual(expect.objectContaining({
+        mode: "shared", connectionId: "00000000-0000-4000-8000-000000000b01", grantId: "00000000-0000-4000-8000-000000000b02",
+      }));
+    } finally { accountList.mockRestore(); }
+  });
 });
