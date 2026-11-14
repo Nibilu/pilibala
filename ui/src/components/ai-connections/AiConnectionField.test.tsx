@@ -241,6 +241,39 @@ it.each(["openai", "anthropic", "google", "openrouter"] as const)("keeps a match
   expect(choice?.getAttribute("aria-disabled")).not.toBe("true");
 });
 
+it("offers Default connection and clears a chosen custom connection back to the agent default config", async () => {
+  const onClear = vi.fn();
+  const shared = account({ id: "shared-nvidia", grantId: "shared-nvidia-grant", ownership: "shared", ownerUserId: undefined, status: "connected", isDefault: false, provider: "openai", method: "api_key", name: "Company NVIDIA account" });
+  mocks.list.mockResolvedValue({ currentUserId: "owner", connections: [shared], canManageConnections: true });
+  flushSync(() => root.render(<QueryClientProvider client={client}>
+    <AiConnectionField companyId="company" agentId="agent" agentName="Hermi" adapterType="hermes_local" legacy
+      value={{ provider: "openai", method: "api_key", mode: "shared", connectionId: shared.id, grantId: shared.grantId }}
+      onChange={onChange} onClear={onClear} />
+  </QueryClientProvider>));
+  await settle();
+  const trigger = container.querySelector('[role="combobox"][aria-label="Connection"]')!;
+  flushSync(() => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  await settle();
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.includes("Default connection"));
+  expect(option, "Default connection option is missing").toBeDefined();
+  flushSync(() => option!.click());
+  await settle();
+  expect(onClear).toHaveBeenCalledTimes(1);
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+it("shows Default connection as the current choice when no binding is set", async () => {
+  const onClear = vi.fn();
+  mocks.list.mockResolvedValue({ currentUserId: "owner", connections: [], canManageConnections: true });
+  flushSync(() => root.render(<QueryClientProvider client={client}>
+    <AiConnectionField companyId="company" agentId="agent" agentName="Hermi" adapterType="hermes_local"
+      onChange={onChange} onClear={onClear} />
+  </QueryClientProvider>));
+  await settle();
+  const trigger = container.querySelector('[role="combobox"][aria-label="Connection"]')!;
+  expect(trigger.textContent).toContain("Default connection");
+});
+
 it("keeps loaded connections usable when a refetch fails during an outage", async () => {
   await mount([account()]);
   expect(document.body.textContent).toContain("Reconnect account");

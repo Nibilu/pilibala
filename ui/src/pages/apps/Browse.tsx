@@ -609,11 +609,16 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
         connection.status !== "archived" &&
         connection.connectionPurpose !== "channel",
     );
+    const activeAiConnectionApplicationIds = new Set(
+      activeConnections
+        .filter((connection) => connection.connectionPurpose === "ai")
+        .map((connection) => connection.applicationId),
+    );
     const activeApplications = (
       applicationsQuery.data?.applications ?? []
     ).filter(
       (application) =>
-        application.status !== "archived" &&
+        (application.status !== "archived" || activeAiConnectionApplicationIds.has(application.id)) &&
         application.type !== "chat" &&
         application.metadata?.purpose !== "channel",
     );

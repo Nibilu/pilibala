@@ -70,7 +70,9 @@ export const createAgentInstructionsBundleSchema = z.object({
 });
 
 export const agentRuntimeConfigSchema = z.object({
-  aiConnection: aiConnectionBindingSchema.optional(),
+  // null is the explicit "use this agent's default config" choice; an omitted
+  // key means the patch does not address the binding at all.
+  aiConnection: aiConnectionBindingSchema.nullable().optional(),
   debug: z.object({
     providerTrace: z.literal("raw").optional(),
   }).strict().optional(),

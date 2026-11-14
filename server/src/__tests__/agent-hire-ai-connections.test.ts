@@ -556,21 +556,18 @@ describe("agent-created hires use managed AI connections", () => {
     expect(response.body.error).toContain("cannot be combined");
   });
 
-  it.each([true, false])("preserves shared connection access boundaries (company access: %s)", async (allAgents) => {
+  it.each([true, false])("uses the responsible user's personal default for an implicit hire from a shared connection (company access: %s)", async (allAgents) => {
     const f = await fixture("anthropic");
     const account = await aiConnectionService(db).save(f.companyId, f.userId, { provider: "anthropic", method: "api_key", name: "Shared Claude", ownership: "shared", apiKey: "fixture", agentIds: [f.agentId], allAgents }, "fixture");
     const binding = { provider: "anthropic", method: "api_key", mode: "shared", ...account };
     await db.update(agents).set({ runtimeConfig: { aiConnection: binding } }).where(eq(agents.id, f.agentId));
-    const response = await request(f.app).post(`/api/companies/${f.companyId}/agent-hires`).send({ name: "Shared teammate", role: "engineer", adapterType: f.adapterType });
-    if (!allAgents) {
-      expect(response.status).toBe(403);
-      expect(await db.select().from(agents).where(eq(agents.companyId, f.companyId))).toHaveLength(1);
-    } else {
-      const agent = hired(response);
-      expect(agent.runtimeConfig.aiConnection).toEqual(binding);
-      const runtime = await prepareManagedAiRuntime(db, { companyId: f.companyId, agentId: agent.id, responsibleUserId: f.userId, adapterType: agent.adapterType, binding: agent.runtimeConfig.aiConnection, config: agent.adapterConfig });
-      try { expect(runtime.attribution.connectionId).toBe(account.connectionId); } finally { await runtime.cleanup(); }
-    }
+    const agent = hired(await request(f.app).post(`/api/companies/${f.companyId}/agent-hires`).send({ name: "Personal-default teammate", role: "engineer", adapterType: f.adapterType }));
+    expect(agent.runtimeConfig.aiConnection).toEqual({ provider: "anthropic", method: "api_key", mode: "responsible_user" });
+    const runtime = await prepareManagedAiRuntime(db, { companyId: f.companyId, agentId: agent.id, responsibleUserId: f.userId, adapterType: agent.adapterType, binding: agent.runtimeConfig.aiConnection, allowUninstalledPersonal: true, config: agent.adapterConfig });
+    try {
+      expect(runtime.attribution.connectionId).toBe(f.account.connectionId);
+      expect(runtime.attribution.connectionId).not.toBe(account.connectionId);
+    } finally { await runtime.cleanup(); }
   });
 
   it("still rejects an explicitly incompatible provider without creating a hire", async () => {

@@ -8,8 +8,9 @@ export const DEFAULT_ACP_ENGINE_WARM_HANDLE_IDLE_MS = 0;
 // The bound on the ACP startup handshake (`runtime.ensureSession()`). This
 // deadline is separate from, and much smaller than, the whole-adapter
 // execution timeout: it bounds only the handshake, not the agent turn. A real
-// handshake completes in a few seconds; this value gives it generous room
-// before the host gives up and reports a closed timeout code.
+// handshake completes in a few seconds for most adapters. Hermes cold starts
+// have been observed to take about 54–60 seconds; this shared default remains
+// 60 seconds, while Hermes local opts into a longer bound.
 export const ACPX_HANDSHAKE_TIMEOUT_MS = 60_000;
 
 // How often the host polls the duplex control-channel disposition while the

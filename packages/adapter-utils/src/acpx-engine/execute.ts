@@ -392,6 +392,8 @@ export type AcpxTerminalFailureClassification = Pick<
 export interface AcpxEngineExecutorOptions {
   createRuntime?: AcpxRuntimeFactory;
   now?: () => number;
+  /** Overrides the ACP session handshake deadline. Defaults to ACPX_HANDSHAKE_TIMEOUT_MS. */
+  handshakeTimeoutMs?: number;
   /** Inspect terminal provider text in memory; return only recovery labels and a timestamp. */
   classifyTerminalSessionFailure?: (
     failure: AcpxTerminalSessionFailure,
@@ -3106,6 +3108,7 @@ class HandshakeAbandonmentFence {
  * this call started polling is still caught on the first tick.
  */
 function guardEnsureSession(params: {
+  timeoutMs: number;
   call: () => Promise<AcpRuntimeHandle>;
   fence: HandshakeAbandonmentFence;
   isTransportLost: () => boolean;
@@ -3141,7 +3144,7 @@ function guardEnsureSession(params: {
       outcome = "guard";
       clearInterval(poll);
       reject(new AcpxHandshakeTimeoutError());
-    }, ACPX_HANDSHAKE_TIMEOUT_MS);
+    }, params.timeoutMs);
     const poll = setInterval(() => {
       if (settled) return;
       if (!params.isTransportLost()) return;
@@ -4968,6 +4971,7 @@ export function createAcpxEngineExecutor(deps: AcpxEngineExecutorOptions = {}) {
               handle = await measureStartupStep(ctx, now, "acp.handshake", async () => {
                 const ensureSessionStart = now();
                 const established = await guardEnsureSession({
+                  timeoutMs: deps.handshakeTimeoutMs ?? ACPX_HANDSHAKE_TIMEOUT_MS,
                   call: () =>
                     runtime.ensureSession({
                       sessionKey: prepared.sessionKey,
@@ -5069,6 +5073,7 @@ export function createAcpxEngineExecutor(deps: AcpxEngineExecutorOptions = {}) {
               handle = await measureStartupStep(ctx, now, "acp.handshake", async () => {
                 const ensureSessionStart = now();
                 const established = await guardEnsureSession({
+                  timeoutMs: deps.handshakeTimeoutMs ?? ACPX_HANDSHAKE_TIMEOUT_MS,
                   call: () =>
                     runtime.ensureSession({
                       sessionKey: prepared.sessionKey,
@@ -5354,6 +5359,7 @@ export function createAcpxEngineExecutor(deps: AcpxEngineExecutorOptions = {}) {
               const repairedHandle = await measureStartupStep(ctx, now, "acp.handshake", async () => {
                 const ensureSessionStart = now();
                 const established = await guardEnsureSession({
+                  timeoutMs: deps.handshakeTimeoutMs ?? ACPX_HANDSHAKE_TIMEOUT_MS,
                   call: () =>
                     runtime.ensureSession({
                       sessionKey: prepared.sessionKey,

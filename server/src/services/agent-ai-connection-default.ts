@@ -47,7 +47,10 @@ export function defaultAiConnectionForHire(
     return childProvider && hasChildAuth(childProvider) ? undefined : inherited.data;
   }
   if (inherited.data.mode !== "delegated" && compatible(inherited.data)) {
-    return withChildAuthPrecedence(inherited.data);
+    const binding = inherited.data.mode === "shared"
+      ? { provider: inherited.data.provider, method: "api_key" as const, mode: "responsible_user" as const }
+      : inherited.data;
+    return withChildAuthPrecedence(binding);
   }
   // The selected provider's personal default supplies the actual sign-in method
   // at run time. A provider without an account can be connected on the first task.

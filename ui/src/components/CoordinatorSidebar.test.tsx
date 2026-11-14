@@ -10,7 +10,7 @@ import { coordinatorAttentionQueryKey, coordinatorAttentionSummaryQueryKey } fro
 import { queryKeys } from "@/lib/queryKeys";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-const fixture = vi.hoisted(() => ({ attention: vi.fn(), summary: vi.fn(), openNewIssue: vi.fn(), pathname: "/COO/issues", collapsed: false, userId: "reviewer", chats: [] as Array<{ isUnreadForMe: boolean }>,
+const fixture = vi.hoisted(() => ({ attention: vi.fn(), summary: vi.fn(), openNewIssue: vi.fn(), pathname: "/COO/issues", collapsed: false, userId: "reviewer", chats: [] as Array<{ isUnreadForMe: boolean; conversationAgentId?: string; updatedAt?: string }>,
   recentTasks: [] as Array<Record<string, unknown>>, projects: [] as Array<Record<string, unknown>>, projectTasks: vi.fn(), enableCases: false, agents: [] as Agent[] }));
 vi.mock("@/hooks/useAgentChatNavigation", () => ({ useAgentChatNavigation: () => ({
   companyId: "company", userId: fixture.userId, agents: { data: fixture.agents }, chats: { data: fixture.chats }, session: { isSuccess: true },
@@ -89,6 +89,20 @@ describe("Coordinator task creation", () => {
   });
 });
 
+describe("Coordinator chat recents", () => {
+  it("omits terminated agents from recent chat navigation", async () => {
+    const active = { id: "active", companyId: "company", name: "Active agent", urlKey: "active", role: "engineer", status: "idle" } as Agent;
+    const terminated = { ...active, id: "retired", name: "Retired agent", urlKey: "retired", status: "terminated" } as Agent;
+    fixture.agents = [active, terminated];
+    fixture.chats = [{ isUnreadForMe: false, conversationAgentId: terminated.id, updatedAt: "2026-11-13T12:00:00Z" }];
+
+    await renderSidebar();
+
+    expect(container.querySelector('a[href="/chats/retired"]')).toBeNull();
+    expect(container.textContent).not.toContain("Retired agent");
+  });
+});
+
 describe("Coordinator pinned pages", () => {
   it("builds hundreds of agent pins with input reads proportional to list size", () => {
     const agents = Array.from({ length: 500 }, (_, index) => ({ id: `agent-${index}`, companyId: "company", name: `Agent ${index}`, urlKey: `agent-${index}` } as Agent));
@@ -104,6 +118,10 @@ describe("Coordinator pinned pages", () => {
     expect(items.map(item => item.key)).toEqual(pins);
     expect(reads).toBeLessThanOrEqual(4 * agents.length);
     expect(items[0].to).toBe("/chats/agent-499");
+  });
+  it("omits pins for terminated agents", () => {
+    const retired = { id: "retired", companyId: "company", name: "Retired", urlKey: "retired", status: "terminated" } as Agent;
+    expect(buildPinnedNavigationItems(["agent-chat:company:retired"], [retired], [])).toEqual([]);
   });
   it("keeps mixed pins in stored order and prevents native link dragging", async () => {
     fixture.agents = [{ id: "cto", companyId: "company", name: "CTO", urlKey: "cto", role: "cto", status: "idle" } as Agent];

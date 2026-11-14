@@ -272,6 +272,41 @@ describe("Connectors landing page", () => {
     return client;
   }
 
+  it("keeps active AI accounts visible and manageable when their parent application is archived", async () => {
+    const applicationId = "archived-ai-application";
+    listGalleryMock.mockResolvedValue({ apps: [getAppStoreDefinition("chat-completions-api")] });
+    listApplicationsMock.mockResolvedValue({ applications: [application({
+      id: applicationId,
+      name: "Legacy AI gateway",
+      status: "archived",
+      type: "mcp_http",
+      applicationKey: "app-gallery:gateway",
+      metadata: { sourceTemplateKey: "gateway" },
+    })] });
+    listConnectionsMock.mockResolvedValue({ connections: [connection({
+      id: "archived-parent-ai-connection",
+      applicationId,
+      name: "Company NVIDIA account",
+      connectionPurpose: "ai",
+      config: { sourceTemplateKey: "gateway", ai: {
+        provider: "openai", method: "api_key",
+        routing: { kind: "gateway", protocol: "chat", auth: "bearer", baseUrl: "https://integrate.api.nvidia.com/v1", models: [] },
+      } },
+    })] });
+
+    await renderBrowse();
+
+    const providerRow = container.querySelector<HTMLElement>('[data-app-slug="chat-completions-api"]');
+    expect(providerRow?.textContent).toContain("Company NVIDIA account");
+    const manage = providerRow?.querySelector<HTMLButtonElement>('button[aria-label="Manage Company NVIDIA account connection"]');
+    expect(manage).not.toBeNull();
+    await act(() => { manage!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); });
+    await flushReact();
+    const menuItems = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).map(item => item.textContent?.trim());
+    expect(menuItems).toContain("Permissions");
+    expect(menuItems).toContain("Remove connection");
+  });
+
   it("shows provider catalog rows and splits legacy gateway accounts by API format", async () => {
     const slugs = ["notion", "openrouter", "bedrock", "google", "responses-api", "messages-api", "chat-completions-api", "local"];
     listGalleryMock.mockResolvedValue({ apps: slugs.map(slug => getAppStoreDefinition(slug)) });

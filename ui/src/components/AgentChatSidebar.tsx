@@ -26,7 +26,7 @@ export function AgentChatSidebar({
 }) {
   const { collapsed, peeking } = useSidebar();
   const rail = collapsed && !peeking;
-  const ordered = orderChatAgents(agents, starredIds, recentIds);
+  const ordered = orderChatAgents(agents.filter(agent => agent.status !== "terminated"), starredIds, recentIds);
   const row = (agent: Agent) => {
     const pinned = starredIds.includes(agent.id);
     return (

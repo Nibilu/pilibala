@@ -17,6 +17,10 @@ import { durableAgentFilesEnabled, invalidateAgentFileProjection, persistDurable
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type Agent = typeof agents.$inferSelect;
 export const AGENT_FILES_CONTRACT = "pilibala.agent-files.v1";
+// Disk-format discriminator persisted in <agent-home>/file-sync/adopted.json.
+// Brand renames must NOT treat this as display copy — migrate or accept the
+// legacy value at the read-site (see adoptAgentFiles).
+const LEGACY_AGENT_FILES_CONTRACT = "paperclip.agent-files.v1";
 export const MAX_AGENT_FILE_BYTES = 256 * 1024 * 1024;
 export const MAX_AGENT_DIRECTORY_BYTES = 2 * 1024 * 1024 * 1024;
 export const MAX_AGENT_DIRECTORY_ENTRIES = 100_000;
@@ -82,7 +86,9 @@ export async function adoptAgentFiles(tx: Tx, agent: Agent): Promise<string> {
     throw error;
   });
   if (adopted !== null) {
-    if (JSON.parse(adopted).schema !== AGENT_FILES_CONTRACT) throw new Error("Unsupported agent file contract");
+    const schema = JSON.parse(adopted).schema;
+    if (schema !== AGENT_FILES_CONTRACT && schema !== LEGACY_AGENT_FILES_CONTRACT) throw new Error("Unsupported agent file contract");
+    if (schema !== AGENT_FILES_CONTRACT) await materializeInstructionBytes(markerRoot, marker, Buffer.from(JSON.stringify({ schema: AGENT_FILES_CONTRACT })));
     await persistDurableAgentFiles(tx, agent, root, true);
     return root;
   }

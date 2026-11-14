@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { ACPX_HANDSHAKE_TIMEOUT_MS } from "@pilibalaai/adapter-utils/acpx-engine/constants";
 import {
   buildHermesAcpConfig,
+  createHermesAcpExecutor,
   nodeVersionMeetsHermesAcpMinimum,
   resolveHermesAcpBillingIdentity,
   resolveHermesExecutionEngineForRun,
@@ -99,6 +104,48 @@ describe("hermes acp config mapping", () => {
       biller: "hermes",
       billingType: "unknown",
     });
+  });
+});
+
+describe("Hermes ACP startup budget", () => {
+  it("allows a fresh Hermes session to finish after the shared 60 second handshake bound", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pilibala-hermes-acp-handshake-"));
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    let resolveEnsure!: (handle: unknown) => void;
+    const ensureSessionPromise = new Promise((resolve) => { resolveEnsure = resolve; });
+    const runtime = {
+      ensureSession: () => { markStarted(); return ensureSessionPromise; },
+      startTurn: () => ({
+        events: (async function* () { yield { type: "done", stopReason: "end_turn" }; })(),
+        result: Promise.resolve({ status: "completed" as const, stopReason: "end_turn" }),
+        cancel: async () => {},
+      }),
+      close: async () => {},
+    };
+    const executeHermesAcp = createHermesAcpExecutor({ createRuntime: () => runtime as never });
+
+    try {
+      vi.useFakeTimers();
+      const resultPromise = executeHermesAcp({
+        runId: "run-hermes-long-handshake",
+        agent: { id: "hermes-agent", companyId: "company-1" },
+        runtime: {},
+        config: { engine: "acp", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
+        context: {},
+        onLog: async () => {},
+        onMeta: async () => {},
+      } as never);
+      await started;
+      await vi.advanceTimersByTimeAsync(ACPX_HANDSHAKE_TIMEOUT_MS + 50);
+      resolveEnsure({ backendSessionId: "backend-session", agentSessionId: "agent-session", runtimeSessionName: "runtime-session" });
+      const result = await resultPromise;
+      expect(result.exitCode).toBe(0);
+      expect(result.errorCode).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

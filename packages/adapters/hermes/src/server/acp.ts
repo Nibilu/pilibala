@@ -194,6 +194,7 @@ export function createHermesAcpExecutor(options: HermesAcpExecutorOptions = {}):
         resolveBillingIdentity: resolveHermesAcpBillingIdentity,
         ...options,
         adapterType: "hermes_local",
+        handshakeTimeoutMs: 120_000,
         moduleDir,
         packageRootDir,
       });

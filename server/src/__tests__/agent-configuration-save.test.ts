@@ -99,6 +99,21 @@ describePostgres("agent configuration save latency", () => {
     expect(allocate).not.toHaveBeenCalled(); expect(probe).not.toHaveBeenCalled();
   });
 
+  it("clears the binding back to the agent default config when a save sends aiConnection null", async () => {
+    await db.update(agents).set({ runtimeConfig: { aiConnection: binding } }).where(eq(agents.id, agent.id));
+    const response = await request(app).patch(`/api/agents/${agent.id}`).send({ runtimeConfig: { aiConnection: null } });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect((await readAgent()).runtimeConfig.aiConnection).toBeUndefined();
+    expect(allocate).not.toHaveBeenCalled(); expect(probe).not.toHaveBeenCalled(); expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps the existing binding when a runtimeConfig patch merely omits aiConnection", async () => {
+    await db.update(agents).set({ runtimeConfig: { aiConnection: binding } }).where(eq(agents.id, agent.id));
+    const response = await request(app).patch(`/api/agents/${agent.id}`).send({ runtimeConfig: { heartbeat: { enabled: false } } });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect((await readAgent()).runtimeConfig.aiConnection).toEqual(binding);
+  });
+
   it("rejects an account without an installation for this agent", async () => {
     await db.delete(toolConnectionInstalls).where(eq(toolConnectionInstalls.connectionId, account.connectionId));
     const response = await request(app).patch(`/api/agents/${agent.id}`).send({ runtimeConfig: { aiConnection: binding } });

@@ -76,6 +76,14 @@ describe("AgentChatPicker", () => {
     expect(getCount).toHaveBeenCalledTimes(1000);
   });
 
+  it("does not list terminated agents as chat choices", async () => {
+    const terminated = { ...agents[0], id: "retired", name: "Retired", status: "terminated" } as Agent;
+    await render({ agents: [agents[0], terminated] });
+    expect(options()).toHaveLength(1);
+    expect(options()[0].textContent).toContain("Alex");
+    expect(document.body.textContent).not.toContain("Retired");
+  });
+
   it("shows saved custom avatars and default avatars in agent choices", async () => {
     await render({ agents: [
       { ...agents[0], appearance: { ...appearanceForPalette("deep-tide"), customAvatarAssetId: "22222222-2222-4222-8222-222222222222" } },

@@ -58,6 +58,8 @@ export function AiConnectionField({
   readOnly = false,
   preferAdvanced = false,
   routerAdapterType,
+  /** Clears the explicit connection: the agent falls back to its default config front and back. */
+  onClear,
   initialWizardProvider,
   initialWizardProtocol,
   initialWizardBaseUrl,
@@ -74,6 +76,7 @@ export function AiConnectionField({
   readOnly?: boolean;
   preferAdvanced?: boolean;
   routerAdapterType?: string;
+  onClear?: () => void;
   /** Preselect this wizard entry when the connect dialog opens (e.g. the host Hermes provider's matching entry). */
   initialWizardProvider?: "openrouter" | "bedrock" | "gateway" | "local" | "google" | "openai" | "anthropic" | "xai";
   /** Protocol preset for gateway/local preselection; falls back to the adapter default. */
@@ -174,6 +177,7 @@ export function AiConnectionField({
         readOnly={readOnly}
         loading={accounts.isPending || accountsView.kind === "reconnecting"}
         error={accountsView.kind === "error" ? describeError(accounts.error).body : undefined}
+        onClear={onClear}
         onChange={(binding) =>
           changeBinding(aiConnectionBindingSchema.parse(binding))
         }

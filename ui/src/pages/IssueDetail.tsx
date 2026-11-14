@@ -5011,13 +5011,21 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
       });
     },
     onError: (err) => {
+      // A deferred check is the server declining to start a monitor run while
+      // recovery is still settling — an expected transient state, not a
+      // failure. Present it as neutral copy instead of a red error toast.
+      const deferred =
+        err instanceof ApiError &&
+        err.status === 409 &&
+        (err.body as { code?: unknown } | null)?.code ===
+          "issue_monitor_check_deferred";
       pushToast({
-        title: "Monitor check failed",
+        title: deferred ? "Monitor check deferred" : "Monitor check failed",
         body:
           err instanceof Error
             ? err.message
             : "Unable to trigger the monitor right now",
-        tone: "error",
+        tone: deferred ? "info" : "error",
       });
     },
   });

@@ -1055,20 +1055,23 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     refetchOnMount: "always",
     retry: false,
   });
+  // The runtime overlay speaks with authority once present: an explicit
+  // `aiConnection: null` there is the "use the agent's default config" choice,
+  // not a fallback to the persisted binding.
+  const runtimeConfigOverlay = (overlay.runtime.runtimeConfig as Record<string, unknown> | undefined) ?? null;
+  const effectiveAiConnectionRaw = runtimeConfigOverlay
+    ? runtimeConfigOverlay.aiConnection
+    : runtimeConfig.aiConnection;
   const runtimeAiBinding = isCreate
     ? undefined
-    : aiConnectionBindingSchema.safeParse(
-        (overlay.runtime.runtimeConfig as Record<string, unknown> | undefined)?.aiConnection ?? runtimeConfig.aiConnection,
-      ).data;
+    : aiConnectionBindingSchema.safeParse(effectiveAiConnectionRaw).data;
   const usesManagedConnection = Boolean(runtimeAiBinding);
   // Managed AI connections route the model themselves: their provider wins over
   // the adapter catalog so discovery and refresh keep the connection's catalog.
-  const modelProvider = adapterType === "opencode_local" && aiConnectionBindingSchema.safeParse(
-    (overlay.runtime.runtimeConfig as Record<string, unknown> | undefined)?.aiConnection ?? runtimeConfig.aiConnection,
-  ).data?.provider === "openrouter" ? "openrouter" : runnerProvider;
+  const modelProvider = adapterType === "opencode_local" && aiConnectionBindingSchema.safeParse(effectiveAiConnectionRaw).data?.provider === "openrouter" ? "openrouter" : runnerProvider;
   const runnerAcpxAgent = adapterType === "pilibala_runner" && runnerProvider === "acpx"
     ? String(isCreate ? props.values.adapterSchemaValues?.acpxAgent ?? "claude" : eff("adapterConfig", "acpxAgent", config.acpxAgent ?? "claude")) : undefined;
-  const modelAiBinding = aiConnectionBindingSchema.safeParse((overlay.runtime.runtimeConfig as Record<string, unknown> | undefined)?.aiConnection ?? runtimeConfig.aiConnection).data;
+  const modelAiBinding = aiConnectionBindingSchema.safeParse(effectiveAiConnectionRaw).data;
   const accountBoundCatalog = isAccountBoundAcpxAgent(runnerAcpxAgent);
   const modelCacheIdentity = accountBoundCatalog ? `${modelProvider}:${runnerAcpxAgent}:${isCreate ? "new" : props.agent.id}:${JSON.stringify(modelAiBinding ?? null)}` : runnerAcpxAgent ? `${modelProvider}:${runnerAcpxAgent}` : modelProvider;
   const connectionModels = useConnectionModels(isExternalRunner ? null : selectedCompanyId, isCreate ? undefined : modelAiBinding, aiRoutingHarness(adapterType, runnerProvider, runnerAcpxAgent));
@@ -1273,9 +1276,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       });
       const adapterConfig = buildAdapterConfigForTest(adapterConfigPatch);
       const agentId = isCreate ? undefined : props.agent.id;
-      const aiConnection = isCreate ? undefined : aiRuntimeConnectionBindingSchema.safeParse(
-        (overlay.runtime.runtimeConfig as Record<string, unknown> | undefined)?.aiConnection ?? props.agent.runtimeConfig.aiConnection,
-      ).data;
+      const aiConnection = isCreate ? undefined : aiRuntimeConnectionBindingSchema.safeParse(effectiveAiConnectionRaw).data;
       const testRunnerSelection = isCursorCloudRunner
         ? { runner: "pilibala" as const }
         : isRunnerHarness && (isCreate ? runner !== "auto" : overlay.runner !== undefined) ? { runner } : {};
@@ -1376,7 +1377,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     environmentCapabilities?.sandboxProviders?.[effectiveLoginProvider]?.supportsLoginPty === true;
   const loginNeedsPty = adapterCaps.login != null;
   const showAdapterLogin =
-    (isCreate || !((overlay.runtime.runtimeConfig as Record<string, unknown> | undefined)?.aiConnection ?? runtimeConfig.aiConnection)) &&
+    (isCreate || !effectiveAiConnectionRaw) &&
     adapterSupportsSandboxLogin &&
     effectiveLoginEnvironment?.driver === "sandbox" &&
     Boolean(effectiveLoginEnvironmentId) &&
@@ -1953,6 +1954,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   environmentId={currentDefaultEnvironmentId || undefined}
                   legacy
                   onChange={binding => mark("runtime", "runtimeConfig", { ...runtimeConfig, aiConnection: binding })}
+                  onClear={() => mark("runtime", "runtimeConfig", { ...runtimeConfig, aiConnection: null })}
                 />
               </details>
             ) : (
@@ -1962,7 +1964,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 agentName={props.agent.name}
                 adapterType={aiRoutingHarness(adapterType, eff("adapterConfig", "provider", config.provider), eff("adapterConfig", "acpxAgent", config.acpxAgent))}
                 routerAdapterType={adapterType}
-                value={aiRuntimeConnectionBindingSchema.safeParse((overlay.runtime.runtimeConfig as Record<string, unknown> | undefined)?.aiConnection ?? runtimeConfig.aiConnection).data}
+                value={aiRuntimeConnectionBindingSchema.safeParse(effectiveAiConnectionRaw).data}
                 model={String(eff("adapterConfig", "model", config.model) ?? "")}
                 environmentId={currentDefaultEnvironmentId || undefined}
                 legacy
@@ -1970,6 +1972,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   mark("runtime", "runtimeConfig", { ...runtimeConfig, aiConnection: binding });
                   if (accountBoundCatalog && hashKey([modelAiBinding ?? null]) === hashKey([binding ?? null])) void refreshConnectionModels();
                 }}
+                onClear={() => mark("runtime", "runtimeConfig", { ...runtimeConfig, aiConnection: null })}
               />
             )
           )}

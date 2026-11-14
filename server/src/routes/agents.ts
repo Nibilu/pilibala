@@ -2158,6 +2158,10 @@ export function agentRoutes(
   function normalizeNewAgentRuntimeConfig(runtimeConfig: unknown): Record<string, unknown> {
     const parsedRuntimeConfig = asRecord(runtimeConfig);
     const normalizedRuntimeConfig = parsedRuntimeConfig ? { ...parsedRuntimeConfig } : {};
+    // An explicit null means "use the agent default config": persist no binding.
+    if (normalizedRuntimeConfig.aiConnection === null) {
+      delete normalizedRuntimeConfig.aiConnection;
+    }
     const parsedHeartbeat = asRecord(normalizedRuntimeConfig.heartbeat);
     const heartbeat = parsedHeartbeat ? { ...parsedHeartbeat } : {};
 
@@ -5802,7 +5806,11 @@ export function agentRoutes(
       });
     }
     const nextAiConfig = (patchData.adapterConfig ?? existing.adapterConfig) as Record<string, unknown>;
-    if (existing.runtimeConfig.aiConnection && requestedRuntimeConfig && !requestedRuntimeConfig.aiConnection
+    // `aiConnection: null` is the explicit "use this agent's default config"
+    // choice and must clear the binding. Only an OMITTED key means "not
+    // addressed by this patch", so the re-add safety net below keeps the
+    // existing binding for a partial runtimeConfig edit.
+    if (existing.runtimeConfig.aiConnection && requestedRuntimeConfig && requestedRuntimeConfig.aiConnection === undefined
       && !isAgentSetupDraft(existing)) {
       const existingBinding = aiRuntimeConnectionBindingSchema.safeParse(existing.runtimeConfig.aiConnection).data;
       if (existingBinding && agentHarnessType(existing.adapterType, existing.adapterConfig) === agentHarnessType(requestedAdapterType, nextAiConfig)
@@ -5811,13 +5819,19 @@ export function agentRoutes(
         requestedRuntimeConfig.aiConnection = existingBinding;
       }
     }
-    if (!requestedRuntimeConfig?.aiConnection && !existing.runtimeConfig.aiConnection
+    if (!requestedRuntimeConfig?.aiConnection && requestedRuntimeConfig?.aiConnection === undefined && !existing.runtimeConfig.aiConnection
       && !isAgentSetupDraft(existing)
       && requestedAdapterType === "pilibala_runner" && nextAiConfig.provider === "acpx"
       && nextAiConfig.acpxAgent === "copilot"
       && (touchesAdapterConfiguration || Object.prototype.hasOwnProperty.call(patchData, "defaultEnvironmentId"))) {
       requestedRuntimeConfig = { ...(requestedRuntimeConfig ?? existing.runtimeConfig),
         aiConnection: { provider: "github", method: "api_key", mode: "responsible_user" } };
+    }
+    // An explicit null has spoken: drop the key so the full runtimeConfig
+    // replace persists "no binding" and the run falls back to the agent's
+    // default config.
+    if (requestedRuntimeConfig && requestedRuntimeConfig.aiConnection === null) {
+      delete requestedRuntimeConfig.aiConnection;
     }
     const nextAiBinding = aiRuntimeConnectionBindingSchema.safeParse(requestedRuntimeConfig ? requestedRuntimeConfig.aiConnection : existing.runtimeConfig.aiConnection).data;
     if (nextAiBinding) {

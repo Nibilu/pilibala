@@ -166,12 +166,12 @@ it("reuses chat indexes for 500 agents across unchanged parent renders and refre
   } finally { parse.mockRestore(); }
 });
 
-it("omits terminated agents from the chat list and the new-chat picker", async () => {
-  const retired = { ...roster[0], id: "retired-id", name: "Retired", status: "terminated", urlKey: "alice" };
-  client.setQueryData(queryKeys.agents.list("company-a"), [...roster, retired]);
-  client.setQueryData(queryKeys.agentChats.list("company-a", "user-a"), [chat(retired.id), chat("alice")]);
+it("omits terminated agents from the chat list and the new-chat picker, even when their chat is active", async () => {
+  const retired = { ...roster[0], name: "Retired", status: "terminated" };
+  client.setQueryData(queryKeys.agents.list("company-a"), [retired, roster[1]]);
+  client.setQueryData(queryKeys.agentChats.list("company-a", "user-a"), [chat(retired.id), chat("bob")]);
   await render();
-  expect(container.querySelector('a[href="/chats/retired-id"]')).toBeNull();
+  expect(container.querySelector('a[href="/chats/alice"]')).toBeNull();
   expect(container.textContent).not.toContain("Retired");
   const input = sidebarInputs.at(-1)!;
   expect(input.availableAgents?.some(agent => agent.id === retired.id)).toBe(false);

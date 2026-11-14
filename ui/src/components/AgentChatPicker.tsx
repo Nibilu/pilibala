@@ -37,6 +37,7 @@ export function AgentChatPicker({ open, onOpenChange, trigger, ...props }: Agent
 }
 
 function AgentChatPickerResults({ agents, onSelect, onComplete, loading, error, onRetry, existingChatAgentIds, unreadMessageCounts, renderAgentIcon }: Omit<AgentChatPickerProps, "open" | "onOpenChange"> & { onComplete: () => void }) {
+  const availableAgents = useMemo(() => agents.filter(agent => agent.status !== "terminated"), [agents]);
   const existingIds = useMemo(() => new Set(existingChatAgentIds), [existingChatAgentIds]);
   const mounted = useRef(false);
   const selection = useRef<AbortController | null>(null);
@@ -83,15 +84,15 @@ function AgentChatPickerResults({ agents, onSelect, onComplete, loading, error, 
         <CommandList>
           <CommandEmpty>
             <div className="flex flex-col items-center gap-2 px-4">
-              <span>{agents.length ? `No agents match “${search}”` : "No agents yet."}</span>
-              {agents.length ? <>
+              <span>{availableAgents.length ? `No agents match “${search}”` : "No agents yet."}</span>
+              {availableAgents.length ? <>
                 <span className="text-xs text-muted-foreground">Try another name or role.</span>
                 <Button variant="ghost" size="sm" onClick={() => setSearch("")}>Clear search</Button>
               </> : <span className="text-xs text-muted-foreground">Create an agent from the Agents page to start chatting.</span>}
             </div>
           </CommandEmpty>
           <CommandGroup>
-            {agents.map((agent) => {
+            {availableAgents.map((agent) => {
               const unreadCount = unreadMessageCounts?.get(agent.id) ?? 0;
               return (
                 <CommandItem
@@ -110,7 +111,6 @@ function AgentChatPickerResults({ agents, onSelect, onComplete, loading, error, 
                   {unreadCount > 0 && <Badge variant="ghost" aria-label={`${unreadCount} unread ${unreadCount === 1 ? "message" : "messages"} from ${agent.name}`} className="shrink-0 bg-primary font-mono tabular-nums text-primary-foreground">{unreadCount}</Badge>}
                   {existingChatAgentIds && <span className="shrink-0 text-xs text-muted-foreground">{existingIds.has(agent.id) ? "Open chat" : "New chat"}</span>}
                   {agent.status === "paused" && <span className="text-xs text-(--status-agent-paused)">Paused</span>}
-                  {agent.status === "terminated" && <span className="text-xs text-muted-foreground">Terminated</span>}
                   {agent.status === "pending_approval" && <span className="text-xs text-muted-foreground">Awaiting approval</span>}
                 </CommandItem>
               );

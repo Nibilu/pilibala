@@ -49,10 +49,8 @@ export function AgentConversationsSidebar() {
     return agent ? [agent] : [];
   });
   if (active && !conversations.some(agent => agent.id === active.id)) conversations.unshift(active);
-  // Terminated agents leave the chat list (same eligibility rule as the
-  // teammates roster below), except the conversation currently being viewed;
-  // their history stays reachable through direct links.
-  const listedConversations = conversations.filter(agent => agent.status !== "terminated" || agent.id === activeId);
+  // Terminated agents remain reachable through direct history routes, but never appear in the sidebar.
+  const listedConversations = conversations.filter(agent => agent.status !== "terminated");
   // Everyone you can chat with is listed, not only agents you've already
   // talked to: conversations first by recent activity, then the rest of the
   // roster alphabetically. Same eligibility rule as the Agents nav section —

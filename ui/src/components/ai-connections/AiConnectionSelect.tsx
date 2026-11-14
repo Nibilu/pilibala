@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { Plus, UserRound } from "lucide-react";
+import { Plus, RotateCcw, UserRound } from "lucide-react";
 import {
   aiConnectionCatalogSlug,
   isAiConnectionCompatible,
@@ -39,10 +39,11 @@ export function AiConnectionSelect({
   onRetry,
   onConnect,
   onReconnect,
+  onClear,
   onChange,
   adapterType,
   model,
-}: AiConnectionPickerProps & { adapterType: string; model?: string }) {
+}: AiConnectionPickerProps & { adapterType: string; model?: string; /** Clears the explicit binding: front and back both fall back to the agent's default config. */ onClear?: () => void }) {
   const selectId = useId();
   const personal = personalAiDefault(connections, requirement, currentUserId);
   const selected =
@@ -89,6 +90,7 @@ export function AiConnectionSelect({
     selected && !compatible.some((c) => c.id === selected.id);
   const change = (id: string) => {
     if (id === "connect") return onConnect();
+    if (id === "default") { onClear?.(); return; }
     if (id === "responsible_user")
       return onChange({
         provider: requirement.provider,
@@ -114,7 +116,7 @@ export function AiConnectionSelect({
         value={
           value?.mode === "responsible_user"
             ? "responsible_user"
-            : (value?.connectionId ?? "")
+            : (value?.connectionId ?? (onClear ? "default" : ""))
         }
         onValueChange={change}
         disabled={readOnly || loading || Boolean(error)}
@@ -129,10 +131,18 @@ export function AiConnectionSelect({
               ? <ConnectionLabel connection={selected} label={value?.mode === "responsible_user" ? "Responsible user’s default" : undefined} />
               : value?.mode === "responsible_user"
                 ? "Responsible user’s default"
-                : value ? "Unavailable connection" : undefined}
+                : !value && onClear
+                  ? "Default connection"
+                  : value ? "Unavailable connection" : undefined}
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
+          {onClear && (
+            <SelectItem value="default">
+              <span className="flex size-5 shrink-0 items-center justify-center"><RotateCcw className="size-4" /></span>
+              Default connection
+            </SelectItem>
+          )}
           {incompatible && selected && (
             <SelectItem value={selected.id} disabled>
               <ConnectionLabel connection={selected} label={`${aiConnectionDisplayLabel(selected)} · Incompatible`} wrap />
