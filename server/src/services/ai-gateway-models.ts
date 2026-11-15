@@ -84,3 +84,79 @@ export async function discoverOpenAiCompatibleModels(
   }
   return { models: [], discovered: false, reason: lastReason };
 }
+
+/** Anthropic Messages endpoints list models at /v1/models with x-api-key auth. */
+export async function discoverAnthropicModels(
+  baseUrl: string,
+  apiKey?: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<GatewayModelDiscovery> {
+  const root = baseUrl.trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(root)) return { models: [], discovered: false, reason: "invalid_base_url" };
+  const url = /\/v\d+$/i.test(root) ? `${root}/models` : `${root}/v1/models`;
+  try {
+    const response = await fetchImpl(url, {
+      headers: { "x-api-key": apiKey ?? "", "anthropic-version": "2023-06-01" },
+      redirect: "error",
+      signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return { models: [], discovered: false, reason: `http_${response.status}` };
+    }
+    const models = modelIdsFromPayload(await response.json());
+    if (!models.length) return { models: [], discovered: false, reason: "empty_catalog" };
+    return { models: models.slice(0, MAX_MODELS), discovered: true };
+  } catch {
+    return { models: [], discovered: false, reason: "request_failed" };
+  }
+}
+
+/** Gemini endpoints list models at /v1beta/models keyed by x-goog-api-key; ids arrive as "models/<id>". */
+export async function discoverGeminiModels(
+  baseUrl: string,
+  apiKey?: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<GatewayModelDiscovery> {
+  const root = baseUrl.trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(root)) return { models: [], discovered: false, reason: "invalid_base_url" };
+  const url = /\/v\d+\w*$/i.test(root) ? `${root}/models` : `${root}/v1beta/models`;
+  try {
+    const response = await fetchImpl(url, {
+      headers: apiKey ? { "x-goog-api-key": apiKey } : {},
+      redirect: "error",
+      signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return { models: [], discovered: false, reason: `http_${response.status}` };
+    }
+    const payload = (await response.json()) as { models?: Array<{ name?: unknown }> };
+    const ids = (payload.models ?? [])
+      .map((row) => (typeof row?.name === "string" ? row.name.replace(/^models\//, "") : ""))
+      .filter((id) => id.length > 0);
+    if (!ids.length) return { models: [], discovered: false, reason: "empty_catalog" };
+    return { models: [...new Set(ids)].slice(0, MAX_MODELS), discovered: true };
+  } catch {
+    return { models: [], discovered: false, reason: "request_failed" };
+  }
+}
+
+/**
+ * Protocol dispatch keyed by the connection's provider — the same
+ * classification as the adapters: anthropic speaks the Messages protocol (its
+ * own /v1/models shape), google speaks Gemini's models list, and every other
+ * gateway destination (openai, xai, custom OpenAI-compatible gateways) uses
+ * the OpenAI-compatible catalog. All shapes answer the same question — the
+ * model list the connection's base URL serves — so the runtime can pair any
+ * picked id with this connection's route.
+ */
+export async function discoverGatewayModels(
+  baseUrl: string,
+  apiKey: string | undefined,
+  provider: string,
+): Promise<GatewayModelDiscovery> {
+  if (provider === "anthropic") return discoverAnthropicModels(baseUrl, apiKey);
+  if (provider === "google") return discoverGeminiModels(baseUrl, apiKey);
+  return discoverOpenAiCompatibleModels(baseUrl, apiKey);
+}

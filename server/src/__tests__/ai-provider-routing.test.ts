@@ -105,6 +105,14 @@ describe("provider routing", () => {
       ),
     ).toBe(false);
   });
+  it("projects managed opencode models with resolvable pilibala effort variants", () => {
+    const routing = aiProviderRoutingSchema.parse({ kind: "gateway", protocol: "chat", auth: "bearer", baseUrl: "https://integrate.api.nvidia.com/v1" });
+    const projected = managedProviderRouting(routing, "opencode_local", "selected-key", "nvidia/minimaxai/minimax-m3.1-flash");
+    const content = JSON.parse(projected.env.OPENCODE_CONFIG_CONTENT as string);
+    const variants = content.provider.pilibala.models["nvidia/minimaxai/minimax-m3.1-flash"].variants;
+    expect(variants["pilibala-low"]).toEqual({ reasoning_effort: "low" });
+    expect(variants["pilibala-high"]).toEqual({ reasoning_effort: "high" });
+  });
   it.each(["gateway", "openrouter"] as const)("uses a terminal-filtered secret variable for Hermes %s authentication", kind => {
     const route = aiProviderRoutingSchema.parse({ kind, protocol: "chat", auth: "bearer", ...(kind === "gateway" ? { baseUrl: "https://gateway.example/v1" } : {}) });
     const projected = managedProviderRouting(route, "hermes_local", "selected-key", "fixture-model");

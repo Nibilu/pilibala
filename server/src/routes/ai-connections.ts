@@ -1,7 +1,7 @@
 import { connectionManagementGuard, connectionRequestActor, connectionRequestContext, connectionRequestUserId, aiLoginUserAction, filterConnectionManagementRows } from "./connection-management-authz.js";
 import { connectionManagementService } from "../services/connection-management.js";
 import { validateAiApiKey } from "../services/ai-api-key-test.js";
-import { discoverOpenAiCompatibleModels } from "../services/ai-gateway-models.js";
+import { discoverGatewayModels } from "../services/ai-gateway-models.js";
 export { validateAiApiKey } from "../services/ai-api-key-test.js";
 import { supportsLocalAiLogin } from "../services/local-ai-login-policy.js";
 import { localAiLoginService } from "../services/local-ai-login.js";
@@ -348,7 +348,7 @@ export function aiConnectionRoutes(db: Db, options: Parameters<typeof supportsLo
         // endpoints: grab their live model catalog so the setup UI gets a
         // model list without manual entry. Discovery failures never block
         // creation — routing.models just stays empty as before.
-        const discovery = await discoverOpenAiCompatibleModels(input.routing.baseUrl, input.apiKey);
+        const discovery = await discoverGatewayModels(input.routing.baseUrl, input.apiKey, input.provider);
         if (discovery.models.length) input.routing = { ...input.routing, models: discovery.models.map((id) => ({ id })) };
       }
       const result = await service.save(

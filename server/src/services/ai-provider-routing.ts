@@ -65,6 +65,24 @@ export function managedProviderRouting(
     const id = model.startsWith(`${provider}/`)
       ? model.slice(provider.length + 1)
       : model;
+    // Opencode resolves --variant against the model's own variant map; the
+    // runner driver already injects pilibala-* variants for OpenRouter models
+    // (opencode-server-driver.ts). Mirror that here for managed connections so
+    // the effort lanes (pilibala-low/medium/high) resolve on every projected
+    // model, with the body key each protocol actually accepts — variants stay
+    // inert until a --variant references them. Shape matches the pinned
+    // opencode v1 schema (variants as an object map).
+    const effortVariants = openrouter
+      ? {
+          "pilibala-low": { reasoning: { effort: "low" } },
+          "pilibala-medium": { reasoning: { effort: "medium" } },
+          "pilibala-high": { reasoning: { effort: "high" } },
+        }
+      : {
+          "pilibala-low": { reasoning_effort: "low" },
+          "pilibala-medium": { reasoning_effort: "medium" },
+          "pilibala-high": { reasoning_effort: "high" },
+        };
     env.OPENCODE_CONFIG_CONTENT = JSON.stringify({
       provider: {
         [provider]: {
@@ -72,7 +90,7 @@ export function managedProviderRouting(
             ? { npm: "@ai-sdk/openai-compatible", name: "Pilibala connection" }
             : {}),
           options: { baseURL: baseUrl, apiKey: credential, ...(openrouter ? { headers: OPENROUTER_ATTRIBUTION_HEADERS } : {}) },
-          models: id ? { [id]: { name: id } } : {},
+          models: id ? { [id]: { name: id, variants: effortVariants } } : {},
         },
       },
       enabled_providers: [provider],
