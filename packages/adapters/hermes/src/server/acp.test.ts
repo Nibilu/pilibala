@@ -98,6 +98,32 @@ describe("hermes acp config mapping", () => {
     });
     expect(mapped.model).toBe("nvidia:z-ai/glm-5.3-flash");
   });
+  it("anchors a bare model to the projected route on managed runs", () => {
+    const mapped = buildHermesAcpConfig({
+      engine: "acp",
+      provider: "nvidia",
+      model: "minimaxai/minimax-m3.1-flash",
+      managedAiRouting: { kind: "gateway" },
+    });
+    expect(mapped.model).toBe("custom:minimaxai/minimax-m3.1-flash");
+  });
+  it("re-anchors a stale projected-provider prefix on managed runs", () => {
+    const mapped = buildHermesAcpConfig({
+      engine: "acp",
+      provider: "nvidia",
+      model: "nvidia:minimaxai/minimax-m3.1-flash",
+      managedAiRouting: { kind: "gateway" },
+    });
+    expect(mapped.model).toBe("custom:minimaxai/minimax-m3.1-flash");
+  });
+  it("keeps already-anchored or unknown transport-prefixed model ids unchanged", () => {
+    expect(
+      buildHermesAcpConfig({ engine: "acp", model: "custom:zai-org/GLM-5.3-Flash", managedAiRouting: { kind: "gateway" } }).model,
+    ).toBe("custom:zai-org/GLM-5.3-Flash");
+    expect(
+      buildHermesAcpConfig({ engine: "acp", model: "somegate:weird-id", managedAiRouting: { kind: "gateway" } }).model,
+    ).toBe("somegate:weird-id");
+  });
 
   it("does not double-qualify an already provider-prefixed model", () => {
     const mapped = buildHermesAcpConfig({

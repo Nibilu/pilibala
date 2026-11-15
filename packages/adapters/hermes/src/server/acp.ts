@@ -149,11 +149,33 @@ export function buildHermesAcpConfig(config: Record<string, unknown>): Record<st
   // mismatch), so qualifying the id keeps the persisted association intact
   // across the transport.
   const provider = firstNonEmptyString(config.provider, config.modelProvider);
-  const model = firstNonEmptyString(config.model);
-  const qualifiedModel =
-    provider && provider !== "auto" && model && !model.startsWith(`${provider}:`)
-      ? `${provider}:${model}`
-      : model;
+  const model = firstNonEmptyString(config.model) ?? "";
+  // Model id ↔ route pairing at the transport boundary — the same semantic the
+  // Fast response settings rely on (a model is always applied together with
+  // its connection's route):
+  // - Managed-connection runs project the connection's route AND a provider
+  //   name (e.g. "nvidia") into ctx.config, but the gateway session resolves
+  //   model ids against its OWN sandboxed config, which carries no provider
+  //   definitions or model catalogs: named ids ("nvidia:…", bare ids parsed
+  //   as "provider/model") both fail with model_resolution_failed, and bare
+  //   ids additionally risk the stale custom-provider hijack described above.
+  //   The route is authoritative here, so anchor the id to it with the
+  //   "custom:" prefix — the form Hermes itself writes for host-config
+  //   defaults. A stale "<projected-provider>:" prefix (saved before the
+  //   binding) is re-anchored; unknown prefixed forms pass through untouched.
+  // - Unmanaged runs read the full host config, where named ids resolve
+  //   against real provider definitions — keep the explicit qualification.
+  const managedRoute = config.managedAiRouting != null;
+  const hasTransportPrefix = /^[A-Za-z0-9_-]+:/.test(model);
+  let qualifiedModel = model;
+  if (managedRoute && model) {
+    if (!hasTransportPrefix) qualifiedModel = `custom:${model}`;
+    else if (model.startsWith("custom:")) qualifiedModel = model;
+    else if (provider && model.startsWith(`${provider}:`))
+      qualifiedModel = `custom:${model.slice(provider.length + 1)}`;
+  } else if (!managedRoute && provider && provider !== "auto" && model && !model.startsWith(`${provider}:`)) {
+    qualifiedModel = `${provider}:${model}`;
+  }
 
   return {
     ...config,
