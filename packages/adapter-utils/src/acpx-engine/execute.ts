@@ -2864,11 +2864,28 @@ async function applySessionConfigOptions(input: {
       );
       continue;
     }
-    await input.runtime.setConfigOption({
-      handle: input.handle,
-      key: option.key,
-      value: option.value,
-    });
+    try {
+      await input.runtime.setConfigOption({
+        handle: input.handle,
+        key: option.key,
+        value: option.value,
+      });
+    } catch (error) {
+      // Model/effort/fast are per-backend capabilities: backends like
+      // hermes-acp answer session/set_config_option with an empty advertised
+      // list (e.g. models whose provider config does not expose reasoning
+      // effort). An optional preference must not hard-kill the session —
+      // degrade to the backend default and keep the run alive. Model stays
+      // fatal (its capability-aware path above already handles the common
+      // case; a residual model failure means the run cannot proceed).
+      if (option.key === "model") throw error;
+      const detail = error instanceof Error ? error.message : String(error);
+      await input.onLog(
+        "stderr",
+        `[pilibala] Session does not support config option '${option.key}' (${detail.slice(0, 200)}); continuing with backend default\n`,
+      );
+      continue;
+    }
     await input.onLog(
       "stdout",
       `[pilibala] Applied ACPX ${input.prepared.acpxAgent} config ${option.key}=${option.value}\n`,

@@ -2744,6 +2744,20 @@ describe("shared ACPX engine runtime behavior", () => {
           onLog: async (_stream: string, text: string) => { logs.push(text); },
           onMeta: async () => {},
         } as never);
+        if (phase === "configure_session") {
+          // Optional config options (effort) degrade to a warning so the run
+          // survives backends that advertise no config options (e.g.
+          // hermes-acp sessions for models whose provider config does not
+          // expose reasoning effort); the private env value must still never
+          // reach the logs.
+          expect(result.exitCode).toBe(0);
+          const warning = logs.find((text) =>
+            text.includes("Session does not support config option 'effort'"));
+          expect(warning).toBeDefined();
+          expect(warning).toContain("Internal error");
+          expect(warning).not.toContain("private-setting-value");
+          continue;
+        }
         expect(result.exitCode).toBe(1);
         expect(result.errorMessage).toContain("Internal error\nInvalid session configuration: model_context_window must be a number;");
         expect(result.errorMessage).not.toContain("private-setting-value");
