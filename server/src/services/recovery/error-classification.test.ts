@@ -90,6 +90,17 @@ describe("classifyRunFailure - provider categories (custom gateway / local conne
     }
   });
 
+  it("duplicate reasoning fields map to bounded retry", () => {
+    const result = classifyRunFailure({
+      errorCode: "acpx_turn_failed",
+      errorMessage: "HTTP 400: duplicate field reasoning_content at line 1 column 79854",
+    });
+    expect(result.category).toBe("provider.connection");
+    expect(result.retryPolicy).toBe("bounded");
+    expect(result.ladderHint).toBe("L0");
+    expect(result.matchedSignals).toContain("provider_reasoning_alias_collision");
+  });
+
   it("connection failures map to provider.connection with bounded retry", () => {
     for (const message of [
       "Error: connect ECONNREFUSED 127.0.0.1:8080",

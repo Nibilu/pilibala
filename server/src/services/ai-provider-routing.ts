@@ -5,6 +5,16 @@ import {
   type AiProviderRouting,
 } from "@pilibalaai/shared";
 
+function hermesProviderForRoute(route: AiProviderRouting, baseUrl: string): string {
+  if (route.kind === "openrouter") return "openrouter";
+  try {
+    if (new URL(baseUrl).hostname.toLowerCase() === "integrate.api.nvidia.com") return "nvidia";
+  } catch {
+    // fall through to the generic custom-provider projection
+  }
+  return "custom";
+}
+
 /** Projects one authoritative connection into an isolated harness environment. */
 export function managedProviderRouting(
   route: AiProviderRouting,
@@ -73,11 +83,12 @@ export function managedProviderRouting(
     env.OPENAI_BASE_URL = baseUrl;
     env.OPENAI_API_KEY = credential;
     env.OPENROUTER_API_KEY = route.kind === "openrouter" ? credential : "";
-    config.provider = route.kind === "openrouter" ? "openrouter" : "auto";
+    const provider = hermesProviderForRoute(route, baseUrl);
+    config.provider = provider;
     // Hermes now reads custom endpoint routing from config.yaml, not OPENAI_BASE_URL.
     // Hermes strips OPENAI_API_KEY from terminal children. A custom variable
     // would expose the reusable gateway key to task-controlled shell commands.
-    hermesConfig = `model:\n  provider: ${route.kind === "openrouter" ? '"openrouter"' : '"custom"'}\n  default: ${JSON.stringify(model)}\n  base_url: ${JSON.stringify(baseUrl)}\n  api_mode: "chat_completions"\n${route.auth === "none" ? "" : '  api_key: "${OPENAI_API_KEY}"\n'}`;
+    hermesConfig = `model:\n  provider: ${JSON.stringify(provider)}\n  default: ${JSON.stringify(model)}\n  base_url: ${JSON.stringify(baseUrl)}\n  api_mode: "chat_completions"\n${route.auth === "none" ? "" : '  api_key: "${OPENAI_API_KEY}"\n'}`;
   }
   if (openrouter && hermesConfig) hermesConfig += `  default_headers: ${JSON.stringify(OPENROUTER_ATTRIBUTION_HEADERS)}\n`;
   return { env, config, codexConfig, hermesConfig };

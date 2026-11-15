@@ -222,6 +222,13 @@ const PROVIDER_RULES: Rule[] = [
     ladderHint: "L0",
     test: (i) => readTerminalSessionCategory(i.resultJson) === "service" || readTerminalSessionCategory(i.resultJson) === "connection",
   },
+  {
+    signal: "provider_reasoning_alias_collision",
+    category: "provider.connection",
+    retryPolicy: "bounded",
+    ladderHint: "L0",
+    test: (_i, m) => /duplicate field ['"`]?reasoning_content['"`]?/i.test(m),
+  },
 ];
 
 /** Closed errorCode passthroughs that already carry unambiguous semantics. */

@@ -114,6 +114,17 @@ describe("provider routing", () => {
     expect(projected.hermesConfig).not.toContain("selected-key");
     expect(Object.entries(projected.env).filter(([, value]) => value === "selected-key").map(([name]) => name)).toEqual(kind === "openrouter" ? ["OPENAI_API_KEY", "OPENROUTER_API_KEY"] : ["OPENAI_API_KEY"]);
   });
+  it("keeps an explicit provider association on a managed NVIDIA Hermes gateway", () => {
+    const routing = aiProviderRoutingSchema.parse({
+      kind: "gateway",
+      protocol: "chat",
+      auth: "bearer",
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+    });
+    const projected = managedProviderRouting(routing, "hermes_local", "selected-key", "z-ai/glm-5.3-flash");
+    expect(projected.config.provider).toBe("nvidia");
+    expect(projected.hermesConfig).toContain("\"nvidia\"");
+  });
   it("routes OpenRouter through each harness's protocol without putting secrets in Codex config", () => {
     const routing = aiProviderRoutingSchema.parse({
       kind: "openrouter",

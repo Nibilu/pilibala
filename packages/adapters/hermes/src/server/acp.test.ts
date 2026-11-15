@@ -90,6 +90,24 @@ describe("hermes acp config mapping", () => {
     expect(mapped.agentCommand).toBe("hermes-acp");
   });
 
+  it("qualifies a bare model with the projected provider for NVIDIA gateways", () => {
+    const mapped = buildHermesAcpConfig({
+      engine: "acp",
+      provider: "nvidia",
+      model: "z-ai/glm-5.3-flash",
+    });
+    expect(mapped.model).toBe("nvidia:z-ai/glm-5.3-flash");
+  });
+
+  it("does not double-qualify an already provider-prefixed model", () => {
+    const mapped = buildHermesAcpConfig({
+      engine: "acp",
+      provider: "nvidia",
+      model: "nvidia:z-ai/glm-5.3-flash",
+    });
+    expect(mapped.model).toBe("nvidia:z-ai/glm-5.3-flash");
+  });
+
   it("accepts hermesCommand as the ACP server command override", () => {
     const mapped = buildHermesAcpConfig({
       engine: "acp",
