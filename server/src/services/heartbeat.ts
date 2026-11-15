@@ -297,6 +297,7 @@ import {
   prepareManagedAiRuntime,
   assertManagedAiProjectAuth,
 } from "./ai-connection-runtime.js";
+import { resolveAgentDefaultRunBinding } from "./agent-ai-connection-default.js";
 import { aiConnectionBindingSchema, aiRuntimeConnectionBindingSchema, type AiConnectionRouterSelection } from "@pilibalaai/shared";
 import { aiConnectionRouterService, AiConnectionPoolExhausted, applyAiConnectionRouterTaskSettings } from "./ai-connection-router.js";
 import {
@@ -2566,6 +2567,15 @@ export function heartbeatService(
       const preconfiguredHome = agent.adapterType === "pilibala_runner" && config.homeMode === "preconfigured";
       const requestedAiBinding = preconfiguredHome ? undefined : persistedRouterPoolId ? { mode: "router" as const, connectionId: persistedRouterPoolId } : agent.runtimeConfig?.aiConnection ? aiRuntimeConnectionBindingSchema.parse(agent.runtimeConfig.aiConnection) : undefined;
       let aiBinding = requestedAiBinding?.mode === "router" ? undefined : requestedAiBinding;
+      // "Default connection" semantics (AMB-297/299): with no explicit runtime
+      // binding the run hires the responsible user's default compatible
+      // connection instead of falling through to the raw host config, whose
+      // fallback chain may reference retired providers. The host config stays
+      // the last resort when no compatible connection exists. Selecting the
+      // option never deletes or modifies any connection.
+      if (!aiBinding && !preconfiguredHome && responsibleUserId) {
+        aiBinding = await resolveAgentDefaultRunBinding(db, agent, config, responsibleUserId) ?? aiBinding;
+      }
       const originalAiIssueOverrides = issueAssigneeOverrides;
       if (requestedAiBinding?.mode === "router") {
         try {
