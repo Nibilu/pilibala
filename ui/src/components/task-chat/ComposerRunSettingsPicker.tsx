@@ -55,7 +55,13 @@ const HARNESS_LABELS: Record<string, string> = {
 
 function harnessLabel(agent: Agent | undefined): string {
   if (!agent) return "Choose an agent";
-  const harness = HARNESS_LABELS[agentHarnessType(agent.adapterType, agent.adapterConfig)] ?? agent.adapterType;
+  const harnessType = agentHarnessType(agent.adapterType, agent.adapterConfig);
+  // Hermes runs on two engines: the one-shot CLI lane and the ACP server. The
+  // chat composer must name the engine the run actually uses.
+  const harness =
+    harnessType === "hermes_local" && String(agent.adapterConfig?.engine ?? "") === "acp"
+      ? "Hermes ACP"
+      : HARNESS_LABELS[harnessType] ?? agent.adapterType;
   const provider = composerCatalogProvider(agent);
   const binding = aiRuntimeConnectionBindingSchema.safeParse(agent?.runtimeConfig?.aiConnection).data;
   const poolId = binding?.mode === "router" ? binding.connectionId : undefined;

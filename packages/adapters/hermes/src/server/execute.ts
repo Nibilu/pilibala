@@ -91,6 +91,41 @@ export function resolveHermesCommand(config: Record<string, unknown>): string {
   return cfgString(config.hermesCommand) || cfgString(config.command) || HERMES_CLI;
 }
 
+/**
+ * A hermes data root "commits" its dependency environment as a PM install
+ * ledger (`installs/<id>/environments/<id>/venv`). A borrowed data root without
+ * one refuses to launch (hermes exits with "no dependency environment is
+ * committed"); `hermes pm repair` commits it. Cheap existence probe — no PM
+ * invocation on the hot path.
+ */
+export async function hasCommittedDependencyEnvironment(hermesHome: string): Promise<boolean> {
+  const installsDir = path.join(hermesHome, "installs");
+  let installs: string[];
+  try {
+    installs = await fs.readdir(installsDir);
+  } catch {
+    return false;
+  }
+  for (const install of installs) {
+    const environmentsDir = path.join(installsDir, install, "environments");
+    let environments: string[];
+    try {
+      environments = await fs.readdir(environmentsDir);
+    } catch {
+      continue;
+    }
+    for (const environment of environments) {
+      try {
+        await fs.access(path.join(environmentsDir, environment, "venv", "bin", "python"));
+        return true;
+      } catch {
+        // This environment never finished committing; keep looking.
+      }
+    }
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Wake-up prompt builder
 // ---------------------------------------------------------------------------
@@ -724,6 +759,36 @@ export async function execute(
     ...buildPilibalaEnv(ctx.agent, ctx.agentIdentity),
     ...buildRuntimeToolsEnv(ctx.runtimeTools),
   };
+  // Managed AI runs redirect HOME to a disposable credential home whose data
+  // root owns no checkout — the hermes CLI would then run a full dependency
+  // sync inside the sandbox on every launch (hermes_cli venv_sync
+  // _prepare_borrowed_launch) and die mid-install. Pre-seed the checkout
+  // symlink so the borrowed launch sees the host's CURRENT venv and skips the
+  // sync entirely, while config/state stay inside the isolated home. Hermes
+  // is installed locally; redeploying its environment per run is waste.
+  // Unmanaged runs (a developer's own HERMES_HOME) never touch this path.
+  const hermesHome = config.managedAiRouting != null ? env.HERMES_HOME : "";
+  // Use a persistent xdg-runtime home for the gateway socket, so it is not
+  // cleared when the run's temporary directory is cleaned up. Fall back to
+  // process.env.HOME when xdg-runtime is not available (e.g. unmanaged runs).
+  const persistentHome = process.env.PILIBALA_HOME
+    ? path.resolve(process.env.PILIBALA_HOME, "xdg-runtime")
+    : undefined;
+  const homeForSocket =
+    persistentHome || (process.env.HOME ? path.resolve(process.env.HOME) : undefined);
+  const hostCheckout = homeForSocket
+    ? path.join(homeForSocket, ".hermes", "hermes-agent")
+    : "";
+  if (hermesHome && hostCheckout && hermesHome !== path.dirname(hostCheckout)) {
+    try {
+      await fs.symlink(hostCheckout, path.join(hermesHome, "hermes-agent"), "dir");
+    } catch (error) {
+      if ((error as { code?: string }).code !== "EEXIST") {
+        // Best effort: the CLI's own sync path remains the fallback.
+        await ctx.onLog("stderr", `[hermes] Could not pre-seed the checkout symlink for ${hermesHome}: ${(error as Error).message}\n`);
+      }
+    }
+  }
   // An explicit adapterConfig.pilibalaApiUrl wins for this subprocess
   // (config > adapter env > server-derived env, AMB-254 follow-up C5),
   // normalized to the /api suffix the prompt guidance assumes.
@@ -817,6 +882,60 @@ export async function execute(
     }
     return ctx.onLog(stream, chunk);
   };
+
+  // A managed run points HERMES_HOME at a per-grant home that BORROWS the
+  // checkout: its dependency environment is committed per root, and a fresh
+  // home has none — the CLI exits with "no dependency environment is
+  // committed; run `hermes pm repair`". Repair once per home before the real
+  // spawn; the persistent per-grant home makes this a one-time cost.
+  // A managed run points HERMES_HOME at a per-grant home that BORROWS the
+  // checkout: its dependency environment is committed per root, and a fresh
+  // home has none — the CLI exits with "no dependency environment is
+  // committed; run `hermes pm repair`". Repair once per home before the real
+  // spawn; the persistent per-grant home makes this a one-time cost.
+  // Unmanaged runs (a developer's own HERMES_HOME) manage their own ledger.
+  if (process.env.PILIBALA_HERMES_DIAG) {
+    await ctx.onLog("stderr", `[hermes][diag] managedAiRouting=${config.managedAiRouting != null ? "present" : "absent"} HERMES_HOME=${env.HERMES_HOME ?? "unset"} committed=${env.HERMES_HOME ? await hasCommittedDependencyEnvironment(env.HERMES_HOME) : "n/a"}\n`);
+    await fs.writeFile("/tmp/hermes-cli-env.json", JSON.stringify(env, null, 2), { mode: 0o600 }).catch(() => undefined);
+  }
+  if (config.managedAiRouting != null && env.HERMES_HOME && !(await hasCommittedDependencyEnvironment(env.HERMES_HOME))) {
+    await ctx.onLog("stdout", "[hermes] Preparing the managed Hermes environment for this connection (first run only)…\n");
+    const repair = await runChildProcess(ctx.runId, hermesCmd, ["pm", "repair"], {
+      cwd,
+      env,
+      timeoutSec,
+      graceSec,
+      onLog: wrappedOnLog,
+      onSpawn: ctx.onSpawn,
+    });
+    if (repair.exitCode !== 0) {
+      return {
+        exitCode: repair.exitCode,
+        signal: repair.signal,
+        timedOut: repair.timedOut,
+        errorCode: "hermes_environment_bootstrap_failed",
+        errorMessage: `hermes pm repair failed with exit code ${repair.exitCode}`,
+        resultJson: {
+          executionRecovery: { kind: "bootstrap", providerWorkStarted: false },
+        },
+      };
+    }
+    // The repair's commit settles slightly after its process exits; a launch
+    // in the same instant can still see the pre-commit root. Probe with the
+    // cheapest launcher round-trip until it accepts the root.
+    for (let settle = 0; settle < 30; settle += 1) {
+      const probe = await runChildProcess(ctx.runId, hermesCmd, ["--version"], {
+        cwd,
+        env,
+        timeoutSec: 60,
+        graceSec: 1,
+        onLog: wrappedOnLog,
+        onSpawn: ctx.onSpawn,
+      });
+      if (probe.exitCode === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
 
   const result = await runChildProcess(ctx.runId, hermesCmd, args, {
     cwd,

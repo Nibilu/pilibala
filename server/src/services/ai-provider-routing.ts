@@ -102,11 +102,27 @@ export function managedProviderRouting(
     env.OPENAI_API_KEY = credential;
     env.OPENROUTER_API_KEY = route.kind === "openrouter" ? credential : "";
     const provider = hermesProviderForRoute(route, baseUrl);
+    // Hermes scrubs KNOWN credential env keys (OPENAI_API_KEY, NVIDIA_API_KEY,
+    // …) from terminal/task children, so a turn-level run would resolve the
+    // provider to "no usable credentials". Hermes' own escape hatch is the
+    // model-level `key_env` pointer: the config names a variable and the CLI
+    // reads it from the environment. The name must stay provider-scoped —
+    // empirically a generic gateway name is dropped during the CLI's env
+    // hand-off to the turn, while a provider-bearing name survives — so the
+    // credential travels as PILIBALA_<PROVIDER>_KEY. Config-only, no
+    // hermes-side changes.
+    const gatewayKeyName = `PILIBALA_${provider.toUpperCase()}_KEY`;
+    if (route.auth !== "none") {
+      env[gatewayKeyName] = credential;
+    }
+    // The provider registry still resolves its own env key at launch time
+    // (ACP lane reads it server-side); keep it projected as well.
+    if (provider === "nvidia") env.NVIDIA_API_KEY = credential;
     config.provider = provider;
     // Hermes now reads custom endpoint routing from config.yaml, not OPENAI_BASE_URL.
     // Hermes strips OPENAI_API_KEY from terminal children. A custom variable
     // would expose the reusable gateway key to task-controlled shell commands.
-    hermesConfig = `model:\n  provider: ${JSON.stringify(provider)}\n  default: ${JSON.stringify(model)}\n  base_url: ${JSON.stringify(baseUrl)}\n  api_mode: "chat_completions"\n${route.auth === "none" ? "" : '  api_key: "${OPENAI_API_KEY}"\n'}`;
+    hermesConfig = `model:\n  provider: ${JSON.stringify(provider)}\n  default: ${JSON.stringify(model)}\n  base_url: ${JSON.stringify(baseUrl)}\n  api_mode: "chat_completions"\n${route.auth === "none" ? "" : `  key_env: ${JSON.stringify(gatewayKeyName)}\n  api_key: "\${${gatewayKeyName}}"\n`}`;
   }
   if (openrouter && hermesConfig) hermesConfig += `  default_headers: ${JSON.stringify(OPENROUTER_ATTRIBUTION_HEADERS)}\n`;
   return { env, config, codexConfig, hermesConfig };

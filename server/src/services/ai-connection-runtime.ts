@@ -3,7 +3,7 @@ import type { PluginTaskCredentialWritebackBinding } from "./plugin-task-credent
 import { OPENROUTER_ATTRIBUTION_HEADERS, openRouterClaudeHeaders } from "@pilibalaai/shared/openrouter-attribution";
 import { createHash } from "node:crypto";
 import { HttpError, unprocessable } from "../errors.js";
-import { mkdtemp, mkdir, writeFile, readFile, realpath, rm } from "node:fs/promises";
+import { mkdir, writeFile, readFile, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { and, eq } from "drizzle-orm";
@@ -206,12 +206,32 @@ done`,
   }
 }
 
+// Hermes gateways derive their control socket from $XDG_RUNTIME_DIR first
+// (gateway/control_socket.py), falling back to $TMPDIR. Harnesses launched
+// under a per-run temp dir would otherwise parent the persistent home
+// gateway's socket inside that run's directory: the run ends, the cleanup
+// reaper deletes the socket while the gateway process lives on, and every
+// later run of this grant waits out its ensure deadline against a lock held
+// by an unreachable owner. The anchor must therefore be (a) persistent with
+// the home's usage, (b) user-private (hermes requires 0700, owner-match),
+// and (c) SHORT — the persistent home path carries two UUIDs and blows past
+// AF_UNIX's 104-byte sun_path, which makes hermes silently skip the long
+// candidate and fall back to $TMPDIR. /run/user/<uid> is the spec-correct
+// short location; the leaf's hermes-gw-<home-hash> disambiguates homes.
+function managedAiRuntimeDir(): string | undefined {
+  const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
+  if (uid === undefined) return undefined;
+  return `/run/user/${uid}/pilibala-ai`;
+}
+
 function managedAiHomeEnvironment(home: string): Record<string, string> {
   const providerHome = path.join(home, "provider");
+  const xdgRuntime = managedAiRuntimeDir();
   return {
     HOME: home,
     XDG_CONFIG_HOME: path.join(home, "config"),
     XDG_DATA_HOME: path.join(home, "data"),
+    ...(xdgRuntime ? { XDG_RUNTIME_DIR: xdgRuntime } : {}),
     CODEX_HOME: providerHome,
     GROK_HOME: providerHome,
     CLAUDE_CONFIG_DIR: providerHome,
@@ -335,15 +355,31 @@ export async function prepareManagedAiRuntime(
     })();
     const antigravitySubscription = harness === "antigravity_runtime" && selection.attribution.method === "subscription";
     const originalCredential = antigravitySubscription ? sanitizeAntigravityCredential(value) : value;
-    home = await mkdtemp(
-      path.join(
-        os.tmpdir(),
-        `pilibala-ai-${input.companyId}-${selection.grant.id}-`,
-      ),
-    );
+    // The managed home is PERSISTENT per grant: harnesses bootstrap heavy
+    // dependency environments inside it on first use (hermes installs ~1.2 GB
+    // of Python dependencies into the data root), so a per-run disposable home
+    // would re-run that bootstrap on every launch and kill the run mid-sync.
+    // The credential itself is refreshed per run; only the bootstrap state is
+    // reused. The prep-failure path still removes a partial home so the next
+    // run starts clean.
+    home = path.join(os.tmpdir(), `pilibala-ai-${input.companyId}-${selection.grant.id}`);
+    await mkdir(home, { recursive: true, mode: 0o700 });
     if (harness === "antigravity_runtime") home = await realpath(home);
     const providerHome = path.join(home, "provider");
-    await mkdir(providerHome, { mode: 0o700 });
+    await mkdir(providerHome, { recursive: true, mode: 0o700 });
+    // hermes honors $XDG_RUNTIME_DIR only when it is a user-private directory
+    // (0700, owner-match); create it before any harness child can spawn a home
+    // gateway that would anchor its control socket here. Shared across grants
+    // by design — the socket leaf (hermes-gw-<home-hash>) disambiguates homes.
+    const xdgRuntime = managedAiRuntimeDir();
+    if (xdgRuntime) {
+      try {
+        await mkdir(xdgRuntime, { recursive: true, mode: 0o700 });
+      } catch {
+        // No /run/user on this host (headless without logind): hermes falls
+        // back to $TMPDIR — the pre-fix behavior, degraded but functional.
+      }
+    }
     if (retainedCleanupScope) releaseCredentialHome = bindRetainedAiCredentialHome(providerHome, retainedCleanupScope);
     const env: Record<string, unknown> = {
       ...stripAiAuthBindings(input.config.env),
@@ -385,7 +421,7 @@ export async function prepareManagedAiRuntime(
       // Gemini headless CLI requires an explicit auth choice even with an API key.
       // Seed only the disposable connection home, never the operator's settings.
       const geminiHome = path.join(home, ".gemini");
-      await mkdir(geminiHome, { mode: 0o700 });
+      await mkdir(geminiHome, { recursive: true, mode: 0o700 });
       await writeFile(path.join(geminiHome, "settings.json"), JSON.stringify({
         selectedAuthType: "gemini-api-key",
         security: { auth: { selectedType: "gemini-api-key" } },
@@ -396,7 +432,7 @@ export async function prepareManagedAiRuntime(
       // The selected AI connection owns this disposable home, not a browser login.
       env.GEMINI_HOME = providerHome;
       const antigravityHome = path.join(providerHome, "antigravity-acp");
-      await mkdir(antigravityHome, { mode: 0o700 });
+      await mkdir(antigravityHome, { recursive: true, mode: 0o700 });
       await writeFile(path.join(antigravityHome, "settings.json"), JSON.stringify({
         auth: { type: antigravitySubscription ? "oauth-personal" : "gemini-api-key" },
       }), { mode: 0o600 });
@@ -580,8 +616,13 @@ export async function prepareManagedAiRuntime(
           await googleRecovery?.clear();
           // A committed save, intentional generation discard, or encrypted
           // recovery handoff must own the refresh before deleting its home.
-          removalOnly = true;
-          await removeHome();
+          // API-key runs KEEP the home: it holds no credential material (the
+          // key travels via the run environment), only the harness's heavy
+          // bootstrap state, which the next run reuses.
+          if (subscriptionFile || removalOnly) {
+            removalOnly = true;
+            await removeHome();
+          }
         } catch (error) {
           if (!durableGoogleRefresh && !removalOnly) throw error;
           // Once native retirement and encrypted fsync transfer ownership, the

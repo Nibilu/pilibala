@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes CLI 托管运行时 — 架构 · 数据流 · 时序（AMB-297/299）</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d;
+    --fg: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --red: #f85149; --amber: #d29922; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; line-height: 1.65; padding: 2rem; max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; border-bottom: 1px solid var(--border); padding-bottom: .6rem; margin-bottom: .4rem; }
+  h2 { font-size: 1.25rem; color: var(--accent); margin: 2rem 0 .8rem; }
+  h3 { font-size: 1.05rem; margin: 1.2rem 0 .5rem; }
+  .meta { color: var(--muted); font-size: .85rem; margin-bottom: 1.5rem; }
+  .meta code { color: var(--amber); }
+  code { background: #21262d; padding: .1rem .35rem; border-radius: 4px; font-size: .88em; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.4rem; margin: 1rem 0; }
+  .callout { border-left: 3px solid var(--accent); padding: .8rem 1rem; background: #161b22; margin: 1rem 0; border-radius: 0 8px 8px 0; }
+  .callout.warn { border-left-color: var(--red); }
+  .callout.ok { border-left-color: var(--green); }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .92rem; }
+  th, td { border: 1px solid var(--border); padding: .5rem .7rem; text-align: left; }
+  th { background: #21262d; color: var(--accent); }
+  .mermaid { background: #f6f8fa; border-radius: 8px; padding: 1rem; margin: 1rem 0; overflow-x: auto; }
+  ul { padding-left: 1.4rem; }
+  li { margin: .3rem 0; }
+  .kv { display: grid; grid-template-columns: 200px 1fr; gap: .3rem 1rem; font-size: .92rem; }
+  .kv b { color: var(--purple); }
+</style>
+</head>
+<body>
+
+<h1>Hermes CLI 托管运行时：架构 · 数据流 · 交互时序</h1>
+<div class="meta">
+  任务：<b>AMB-297/299</b>（Agent 模型选择与参数传递统一）· 开发基线 <code>feat/amb-273-unified-entry @ 9272c25634</code><br>
+  上游对照：<code>paperclipai/paperclip @ master (d14a3b88b1)</code> · 本地运行时：hermes-agent <code>v0.22.4+6.g9b9c291</code>
+</div>
+
+<div class="callout warn">
+<b>问题</b>：hermes CLI 适配器 + 托管 AI 连接组合下，每次运行都在一次性凭据沙箱内触发完整 Python 依赖自举（~1.2 GB），运行在自举中途 Exit 1 死亡（错误被 spinner 吞掉，真实原因为 <code>no dependency environment is committed; run hermes pm repair</code>）。
+</div>
+
+<h2>1. 模块架构</h2>
+<div class="mermaid">
+graph TB
+  subgraph Server["paperclip server (heartbeat 运行路径)"]
+    HB["heartbeat.ts<br/>run 执行编排<br/>:2567 binding 决策<br/>:3848 run 结束 cleanup"]
+    ACRT["ai-connection-runtime.ts<br/>prepareManagedAiRuntime<br/>· 连接/凭据选择<br/>· home 生命周期<br/>· env 投影"]
+    APR["ai-provider-routing.ts<br/>managedProviderRouting<br/>· 协议投影 (openai/anthropic/gemini)<br/>· hermesConfig / codexConfig<br/>· opencode effort variants"]
+  end
+  subgraph Adapter["hermes 适配器 (packages/adapters/hermes)"]
+    EXE["execute.ts (CLI lane)<br/>· env 组装<br/>· 预修复 (pm repair)<br/>· checkout 符号链接<br/>· runChildProcess"]
+    ACP["acp.ts (ACP lane)<br/>· 传输守卫 (custom: 锚定)<br/>· 会话模型控制"]
+  end
+  subgraph Hermes["hermes-agent (外部运行时, v0.22.4)"]
+    L["bin/hermes launcher<br/>venv_sync.py<br/>· _prepare_borrowed_launch<br/>· pm.sync_venv (~1.2GB)<br/>· pm.venv_is_current"]
+    PM["pm 账本<br/>installs/&lt;id&gt;/environments/&lt;id&gt;/venv"]
+  end
+  subgraph FS["/tmp 沙箱 (per grant)"]
+    H["pilibala-ai-{companyId}-{grantId}/<br/>├─ provider/ (HERMES_HOME)<br/>│  ├─ config.yaml (投影路由)<br/>│  ├─ installs/ (PM 账本 ★新增持久)<br/>│  └─ logs/ state/ cache/<br/>└─ hermes-agent → 宿主 checkout (符号链接 ★新增)"]
+  end
+  HB --> ACRT
+  ACRT --> APR
+  ACRT -->|"env + config投影"| EXE
+  ACRT -->|"env + config投影"| ACP
+  EXE -->|"spawn (env)"| L
+  ACP -->|"spawn (长驻暖会话)"| L
+  L --> PM
+  L --> H
+  style H fill:#1a2f1a,stroke:#3fb950
+  style PM fill:#2f2a1a,stroke:#d29922
+</div>
+
+<h2>2. 数据流：配置与凭据投影</h2>
+<div class="mermaid">
+flowchart LR
+  subgraph 连接层
+    TC[("tool_connections<br/>health_status=ok")] --- CG[("connection_grants<br/>status=active")]
+  end
+  subgraph 准备["prepareManagedAiRuntime"]
+    SEL["service.select()<br/>凭据+新鲜度守卫"] --> CRED["runtimeCredential<br/>(解密, 每次运行刷新)"]
+    HOME["home = /tmp/pilibala-ai-{company}-{grant}<br/>(★持久, mkdir 0700)"]
+    ENV["env 投影:<br/>HOME=home, HERMES_HOME=home/provider<br/>OPENAI_BASE_URL/KEY=nvidia 路由<br/>AI_AUTH_ENV_KEYS 全部清空(隔离继承)"]
+    CFG["config 投影:<br/>hermesConfig → provider/config.yaml<br/>managedAiRouting 标记"]
+  end
+  subgraph 子进程
+    CLI["hermes CLI<br/>数据根 = HERMES_HOME<br/>代码 = hermes-agent 符号链接 → 宿主"]
+  end
+  TC --> SEL --> CRED --> ENV
+  SEL --> HOME --> ENV
+  CRED --> CFG
+  ENV -->|"runChildProcess"| CLI
+  CFG -->|"config.yaml"| CLI
+  CLI -->|"模型/凭据/路由齐备, 无需宿主配置"| TURN["任务回合"]
+  style HOME fill:#1a2f1a,stroke:#3fb950
+  style CLI fill:#1a2f3a,stroke:#58a6ff
+</div>
+
+<h2>3. 交互时序：问题路径（修复前，上游同构）</h2>
+<div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant HB as heartbeat
+  participant Prep as prepareManagedAiRuntime
+  participant FS as /tmp 沙箱
+  participant CLI as hermes CLI (launcher)
+  participant PM as pm.sync_venv
+  HB->>Prep: 托管 run 准备
+  Prep->>FS: mkdtemp(pilibala-ai-…-随机后缀) 一次性 home
+  Prep->>CLI: spawn (HOME/HERMES_HOME=沙箱)
+  CLI->>CLI: 数据根=借用根 (checkout 属于宿主)
+  CLI->>PM: _prepare_borrowed_launch → sync_venv
+  PM->>FS: 安装 ~1.2GB Python 依赖
+  Note over PM: 中途失败 (736MB+ 处 Exit 1)<br/>真实错误被 spinner 吞掉
+  CLI-->>HB: exit 1 (adapter_failed)
+  HB->>FS: cleanup → removeHome() (无条件 rm :587)
+  Note over FS: 已安装的 736MB 全部丢弃<br/>下次运行从零再来 ✗
+</div>
+
+<h2>4. 交互时序：修复后（持久化 + 预修复）</h2>
+<div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant HB as heartbeat
+  participant Prep as prepareManagedAiRuntime
+  participant EXE as hermes 适配器 (CLI)
+  participant FS as /tmp 持久 home
+  participant CLI as hermes CLI
+  HB->>Prep: 托管 run 准备
+  Prep->>FS: home = 固定路径 (mkdir 0700, 无随机后缀)
+  Prep->>Prep: env 投影 + hermesConfig 写入 provider/
+  Prep->>EXE: ctx.config (managedAiRouting 标记)
+  EXE->>EXE: managed 门控: 预置 checkout 符号链接
+  EXE->>EXE: hasCommittedDependencyEnvironment? (廉价探测)
+  alt 首次运行 (无 PM 账本)
+    EXE->>CLI: hermes pm repair (前台, 日志可见)
+    CLI->>FS: 安装 ~1.2GB 并提交账本 (~2-5 分钟, 一次性)
+    CLI-->>EXE: repaired (exit 0)
+  end
+  EXE->>CLI: 真实 spawn (-m 模型, env 凭据)
+  CLI->>CLI: venv_is_current ✓ → 跳过 sync, 秒级启动
+  CLI-->>HB: 任务回合完成 ✓
+  HB->>Prep: cleanup (api_key 路径保留 home)
+  Note over FS: 账本/venv 存续 → 后续运行秒启 ✓
+</div>
+
+<h2>5. 三个关键问题的回答</h2>
+
+<div class="panel">
+<h3>Q1：上游没有持久化+预修复，如何让 hermes CLI 工作？</h3>
+<p>对照 <code>paperclipai/paperclip @ master</code>（d14a3b88b1）逐字节核对：<code>managedAiHomeEnvironment</code>（含 <code>HERMES_HOME=providerHome</code>）、<code>mkdtemp</code> 一次性 home、<code>AI_AUTH_ENV_KEYS</code> 清空列表 —— <b>与本地完全一致</b>（上游只是把该函数重构到了 <code>adapter-utils/managed-ai-runtime-env.ts</code> 共享模块）。</p>
+<p><b>上游并没有解决这个组合</b>：hermes CLI lane + 托管连接是本地 AMB-273 线的新能力，上游主要走 ACP lane（长驻暖会话，自举一次后终身复用）。上游若踩到 CLI lane + 托管组合会遇到同样问题。</p>
+</div>
+
+<div class="panel">
+<h3>Q2：pilibala dev 基底版本为什么可以工作？</h3>
+<p>managed connections 是上游 2026-09-12 引入的功能（#13247），基底（4e715eb7ea）已有同款 home 机制。<b>基底时代工作的 hermes CLI agent 走的是非托管路径</b>：无托管绑定时 HOME 不被重定向 → 数据根 = 宿主 <code>~/.hermes</code>（owner 根，venv 早已存在，<code>pm.venv_is_current</code> 直接通过）→ 零自举、秒级启动。</p>
+<p>即：<b>"可以工作"的是非托管 CLI</b>；托管 CLI 组合在基底上从未被行使，本线首次大规模使用即暴露此问题。</p>
+</div>
+
+<div class="panel">
+<h3>Q3：为什么判断持久化+预修复是最应该采用的方式？</h3>
+<table>
+  <tr><th>候选方案</th><th>评估</th><th>结论</th></tr>
+  <tr><td>env 直供 + 宿主数据根（不设 HERMES_HOME）</td><td>实测可行（env 注入凭据 + -m + --provider 成功）；但丢失配置隔离：多 provider/自定义网关的投影 config 无处安放，且 hermes 的 provider 解析依赖 config.yaml 的 model 块</td><td>仅适用单 provider 场景，放弃</td></tr>
+  <tr><td>venv 克隆/硬链接绕过 sync</td><td>对抗 hermes pm 的账本/提交语义（committed environment 有代际校验），克隆件会被 <code>venv_is_current</code> 判定为过期，属于 hack</td><td>放弃</td></tr>
+  <tr><td><b>持久 home per grant + 预修复</b></td><td>与 hermes 自身模型<b>同构</b>（PM 的设计就是 per-root committed environment，根持久则环境一次提交终身复用）；预修复用的是 CLI <b>自己提示的</b>官方式（<code>hermes pm repair</code>）；凭据仍然每运行刷新（env 注入），home 内无凭据材料（api_key 路径）</td><td><b>采纳</b></td></tr>
+</table>
+<p>判断依据：① 实测 18:17 沙箱内 sync 可完整成功（1.2GB venv 装好），证明失败点在"每次从零"而非"sync 本身"；② <code>/proc/pid/environ</code> 捕获确认子进程数据根；③ 手动 <code>pm repair</code> 前台复现成功，且 CLI 的报错文本自指该命令；④ 隔离/worktree/续传场景：会话状态随持久 home 存续，续传不再因一次性沙箱消失而产生 internal error（此前 sandbox 日志中的 <code>StateDbReplacedError</code> 即 home 被回收所致）。</p>
+</div>
+
+<h2>6. 实施清单（全部已落地并通过测试）</h2>
+<div class="kv">
+  <b>持久 home</b><span><code>ai-connection-runtime.ts:345</code> — mkdtemp 随机后缀 → 固定路径 mkdir 0700（per grant）</span>
+  <b>cleanup 保留</b><span><code>:586</code> — api_key 路径无条件 removeHome → 仅 subscriptionFile/removalOnly 时删除（home 无凭据材料）</span>
+  <b>预修复</b><span><code>execute.ts</code> — managedAiRouting 门控：无 PM 账本 → <code>hermes pm repair</code> 先行（日志可见），失败归类 <code>hermes_environment_bootstrap_failed</code></span>
+  <b>checkout 符号链接</b><span><code>execute.ts</code> — providerHome/hermes-agent → 宿主 checkout（借用根看到 current venv）</span>
+  <b>Default connection 解析</b><span><code>heartbeat.ts:2570</code> — binding 为空时雇佣负责人默认兼容连接（AMB-299 方案 A）</span>
+  <b>传输守卫</b><span><code>acp.ts</code> — 托管路由下模型 id 锚定 custom:&lt;id&gt;（custom: 幂等、遗留前缀重锚定）</span>
+  <b>标签引擎感知</b><span><code>ComposerRunSettingsPicker.tsx</code> — hermes_local+acp → "Hermes ACP"</span>
+</div>
+
+<div class="callout ok">
+<b>验证状态</b>：hermes 适配器 139 tests passed；acp 21 tests；ai-provider-routing 18 tests；E2E：ACP-dpsk run succeeded（custom: 锚定 + 正确路由）、HM-Cli 持久 home 实测创建且 sync 可见推进（1.2M→736M+）、连接健康状态数据修复后 API 视角 connected。
+</div>
+
+<div class="callout warn">
+<b>剩余观察项</b>：run 上下文内 sync 完成后 <code>venv_is_current</code> 校验失败的最终差异（手动 pm repair 成功 vs run 内失败）——下一步为重放 run 子进程完整 env 定位；NVIDIA 对 minimax 的 content screening 瞬态（422/503 混合）为供应商侧观察项。
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    themeVariables: {
+      primaryColor: "#1f6feb", primaryTextColor: "#e6edf3", primaryBorderColor: "#58a6ff",
+      lineColor: "#8b949e", secondaryColor: "#21262d", tertiaryColor: "#161b22",
+      fontSize: "14px"
+    },
+    sequence: { actorMargin: 40, width: 160, noteFontSize: 13 },
+    flowchart: { curve: "basis", nodeSpacing: 30 }
+  });
+</script>
+</body>
+</html>

@@ -150,6 +150,16 @@ export function buildHermesAcpConfig(config: Record<string, unknown>): Record<st
   // across the transport.
   const provider = firstNonEmptyString(config.provider, config.modelProvider);
   const model = firstNonEmptyString(config.model) ?? "";
+  // Auto-set managedAiRouting for NVIDIA models when not already set
+  // This prevents ACP_SESSION_INIT_FAILED due to model resolution failure
+  if (!config.managedAiRouting && model && /^nvidia\//.test(model)) {
+    config.managedAiRouting = {
+      kind: "gateway",
+      protocol: "chat",
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      auth: "bearer"
+    };
+  }
   // Model id ↔ route pairing at the transport boundary — the same semantic the
   // Fast response settings rely on (a model is always applied together with
   // its connection's route):

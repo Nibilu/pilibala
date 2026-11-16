@@ -116,11 +116,17 @@ describe("provider routing", () => {
   it.each(["gateway", "openrouter"] as const)("uses a terminal-filtered secret variable for Hermes %s authentication", kind => {
     const route = aiProviderRoutingSchema.parse({ kind, protocol: "chat", auth: "bearer", ...(kind === "gateway" ? { baseUrl: "https://gateway.example/v1" } : {}) });
     const projected = managedProviderRouting(route, "hermes_local", "selected-key", "fixture-model");
+    // Hermes scrubs known credential env keys from task children; the gateway
+    // credential travels under a provider-scoped custom name that the
+    // projected config's model.key_env pointer resolves at turn level.
+    const gatewayKeyName = kind === "openrouter" ? "PILIBALA_OPENROUTER_KEY" : "PILIBALA_CUSTOM_KEY";
     expect(projected.env.OPENAI_API_KEY).toBe("selected-key");
+    expect(projected.env[gatewayKeyName]).toBe("selected-key");
     expect(projected.env.PILIBALA_AI_PROVIDER_KEY).toBeUndefined();
-    expect(projected.hermesConfig).toContain('api_key: "${OPENAI_API_KEY}"');
+    expect(projected.hermesConfig).toContain(`key_env: "${gatewayKeyName}"`);
+    expect(projected.hermesConfig).toContain(`api_key: "\${${gatewayKeyName}}"`);
     expect(projected.hermesConfig).not.toContain("selected-key");
-    expect(Object.entries(projected.env).filter(([, value]) => value === "selected-key").map(([name]) => name)).toEqual(kind === "openrouter" ? ["OPENAI_API_KEY", "OPENROUTER_API_KEY"] : ["OPENAI_API_KEY"]);
+    expect(Object.entries(projected.env).filter(([, value]) => value === "selected-key").map(([name]) => name)).toEqual(kind === "openrouter" ? ["OPENAI_API_KEY", "OPENROUTER_API_KEY", gatewayKeyName] : ["OPENAI_API_KEY", gatewayKeyName]);
   });
   it("keeps an explicit provider association on a managed NVIDIA Hermes gateway", () => {
     const routing = aiProviderRoutingSchema.parse({
