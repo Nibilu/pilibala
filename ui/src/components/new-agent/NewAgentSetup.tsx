@@ -1398,12 +1398,6 @@ function Setup({
                             </select>
                           </Field>
                         )}
-                        {!connectionAdapter && aiProviderForAdapter(brandType) && (
-                          <AiConnectionField companyId={companyId} agentName={name} adapterType={brandType} model={model} environmentId={environmentId ?? undefined} value={aiBinding}
-                            onChange={binding => { binding.mode !== "router" && setRuntimeAiBinding(binding); resetTest();
-                              if (accountCatalogAvailable && hashKey([aiBinding ?? null]) === hashKey([binding ?? null])) void refreshAccountModels();
-                            }} />
-                        )}
                         {((showModel && !usingKimiApi) ||
                           efforts.length > 0) && (
                           <div className="grid items-start gap-5 sm:grid-cols-2">
