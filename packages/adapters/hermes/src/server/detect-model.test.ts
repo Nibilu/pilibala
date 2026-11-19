@@ -48,6 +48,32 @@ test("parseModelFromConfig tracks api_key presence without exposing the raw secr
   expect(Object.hasOwn(parsed ?? {}, "apiKey")).toBe(false);
 });
 
+test("parseModelFromConfig tolerates a UTF-8 BOM before the model header", () => {
+  const parsed = parseModelFromConfig("\uFEFFmodel:\n  default: oca/gpt-5.4\n  provider: nvidia\n");
+  expect(parsed?.model).toBe("oca/gpt-5.4");
+  expect(parsed?.provider).toBe("nvidia");
+});
+
+test("parseModelFromConfig ignores nested-map keys inside the model section", () => {
+  // A nested provider entry's own base_url must not overwrite the
+  // section-level routing values.
+  const parsed = parseModelFromConfig([
+    "model:",
+    "  default: oca/gpt-5.4",
+    "  provider: nvidia",
+    "  base_url: https://integrate.api.nvidia.com/v1",
+    "  providers:",
+    "    openrouter:",
+    "      base_url: https://should-not-win.example/v1",
+    "      api_key: nested-secret",
+    "",
+  ].join("\n"));
+  expect(parsed?.model).toBe("oca/gpt-5.4");
+  expect(parsed?.provider).toBe("nvidia");
+  expect(parsed?.baseUrl).toBe("https://integrate.api.nvidia.com/v1");
+  expect(parsed?.hasApiKey).toBe(false);
+});
+
 test("resolveProvider defers to Hermes natively when no provider is explicit (config detection retired)", () => {
   // Pilibala no longer parses ~/.hermes/config.yaml as model truth: the
   // effective state lives in Hermes's session DB / auth.json, and a vendor

@@ -65,6 +65,18 @@ export interface AdapterInstallResult {
   installedAt: string;
 }
 
+/**
+ * One row of the local deployment probe behind
+ * `GET /companies/:id/adapters/availability`: whether this server can spawn
+ * the harness CLI for local runs (AMB-311 plan §3). Absent types (server-native
+ * runners, hosted harnesses) are not probed and carry no row.
+ */
+export interface AdapterAvailabilityRow {
+  type: string;
+  deployed: boolean;
+  version?: string;
+}
+
 export const adaptersApi = {
   /** List all registered adapters (built-in + external). */
   list: (context?: { companyId: string; environmentId?: string | null }, options?: RequestOptions) => {
@@ -98,4 +110,14 @@ export const adaptersApi = {
   /** Reinstall an npm-sourced adapter (pulls latest from registry, then reloads). */
   reinstall: (type: string) =>
     api.post<{ type: string; version?: string; reinstalled: boolean }>(`/adapters/${type}/reinstall`, {}),
+
+  /**
+   * Probe which CLI harnesses this server can spawn locally. `refresh` bypasses
+   * the server's short-TTL cache — used only by the grid's explicit re-check.
+   */
+  availability: (companyId: string, options?: { refresh?: boolean } & RequestOptions) => {
+    const { refresh, ...requestOptions } = options ?? {};
+    const query = refresh ? "?refresh=1" : "";
+    return api.get<AdapterAvailabilityRow[]>(`/companies/${companyId}/adapters/availability${query}`, requestOptions);
+  },
 };

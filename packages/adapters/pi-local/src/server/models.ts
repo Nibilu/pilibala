@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { AdapterModel } from "@pilibalaai/adapter-utils";
 import { asString, runChildProcess, sanitizeInheritedPilibalaEnv } from "@pilibalaai/adapter-utils/server-utils";
 
@@ -39,7 +42,19 @@ function parseModelsOutput(stdout: string): AdapterModel[] {
     if (provider === "provider" && model === "model") continue; // Skip header
     
     const id = `${provider}/${model}`;
-    parsed.push({ id, label: id });
+    // Surface the CLI's inference-parameter columns (context, max-out,
+    // thinking, images) in the label so pickers show them without schema
+    // changes (AMB-311).
+    const context = (parts[2] ?? "").trim();
+    const maxOut = (parts[3] ?? "").trim();
+    const thinking = (parts[4] ?? "").trim();
+    const images = (parts[5] ?? "").trim();
+    const bits: string[] = [];
+    if (thinking.toLowerCase() === "yes") bits.push("thinking");
+    if (context) bits.push(`${context} ctx`);
+    if (maxOut) bits.push(`${maxOut} out`);
+    if (images.toLowerCase() === "yes") bits.push("images");
+    parsed.push({ id, label: bits.length > 0 ? `${id} · ${bits.join(" · ")}` : id });
   }
   
   return parsed;
@@ -64,12 +79,23 @@ function sortModels(models: AdapterModel[]): AdapterModel[] {
 }
 
 function resolvePiCommand(input: unknown): string {
+  const explicit = asString(input, "");
+  if (explicit.trim()) return explicit;
   const envOverride =
     typeof process.env.PILIBALA_PI_COMMAND === "string" &&
     process.env.PILIBALA_PI_COMMAND.trim().length > 0
       ? process.env.PILIBALA_PI_COMMAND.trim()
-      : "pi";
-  return asString(input, envOverride);
+      : "";
+  if (envOverride) return envOverride;
+  // pi's managed agent home sits outside many service PATHs; probe it before
+  // falling back to a bare PATH lookup (shared precedence with execution).
+  try {
+    const managedHome = join(homedir(), ".pi", "agent", "bin", "pi");
+    if (statSync(managedHome).isFile()) return managedHome;
+  } catch {
+    // fall through
+  }
+  return "pi";
 }
 
 const discoveryCache = new Map<string, { expiresAt: number; models: AdapterModel[] }>();

@@ -23,6 +23,7 @@ import {
 } from "@pilibalaai/adapter-utils/execution-target";
 import { discoverPiModelsCached } from "./models.js";
 import { parsePiJsonl } from "./parse.js";
+import { resolvePiCliCommand } from "./pi-command.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
 
 function summarizeStatus(checks: AdapterEnvironmentCheck[]): AdapterEnvironmentTestResult["status"] {
@@ -85,7 +86,7 @@ export async function testEnvironment(
 ): Promise<AdapterEnvironmentTestResult> {
   const checks: AdapterEnvironmentCheck[] = [];
   const config = parseObject(ctx.config);
-  const command = asString(config.command, "pi");
+  const command = resolvePiCliCommand(asString(config.command, ""));
   const target = ctx.executionTarget ?? null;
   const targetIsRemote = target?.kind === "remote";
   const cwd = resolveAdapterExecutionTargetCwd(target, asString(config.cwd, ""), process.cwd());
