@@ -42,7 +42,19 @@ function parseModelsOutput(stdout: string): AdapterModel[] {
     if (provider === "provider" && model === "model") continue; // Skip header
     
     const id = `${provider}/${model}`;
-    parsed.push({ id, label: id });
+    // Surface the CLI's inference-parameter columns (context, max-out,
+    // thinking, images) in the label so pickers show them without schema
+    // changes (AMB-311).
+    const context = (parts[2] ?? "").trim();
+    const maxOut = (parts[3] ?? "").trim();
+    const thinking = (parts[4] ?? "").trim();
+    const images = (parts[5] ?? "").trim();
+    const bits: string[] = [];
+    if (thinking.toLowerCase() === "yes") bits.push("thinking");
+    if (context) bits.push(`${context} ctx`);
+    if (maxOut) bits.push(`${maxOut} out`);
+    if (images.toLowerCase() === "yes") bits.push("images");
+    parsed.push({ id, label: bits.length > 0 ? `${id} · ${bits.join(" · ")}` : id });
   }
   
   return parsed;

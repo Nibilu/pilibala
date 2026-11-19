@@ -528,6 +528,20 @@ function Setup({
                 version: "latest" as const,
               }
             : null));
+  // Credentials auto-generated for AI connections are internal plumbing
+  // (key === name === "ai-<uuid>"); they are managed through the connection,
+  // not hand-picked, so hide them from the manual credential picker unless
+  // the current binding already points at one (AMB-311).
+  const manualOrgSecrets = useMemo(() => {
+    const boundSecretId =
+      selectedBinding && typeof selectedBinding === "object" && selectedBinding.type === "secret_ref"
+        ? selectedBinding.secretId
+        : "";
+    return (companySecrets.data ?? []).filter(
+      (secret) => !/^ai-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(secret.key)
+        || secret.id === boundSecretId,
+    );
+  }, [companySecrets.data, selectedBinding]);
   const usingKimiApi =
     adapterType === "kimi_local" && Boolean(apiKey.trim() || selectedBinding);
   const cloud = Boolean(useCloudInstance());
@@ -1654,7 +1668,7 @@ function Setup({
                                         ? selectedBinding.secretId
                                         : ""
                                     }
-                                    secrets={companySecrets.data ?? []}
+                                    secrets={manualOrgSecrets}
                                     disabled={busy}
                                     onSelect={(secretId) => {
                                       setProviderBinding({
