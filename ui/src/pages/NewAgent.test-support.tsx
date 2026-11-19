@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   update: vi.fn(),
   get: vi.fn(),
   adapterModels: vi.fn(),
+  detectModel: vi.fn(async () => null),
   list: vi.fn(),
   hire: vi.fn(),
   testEnvironment: vi.fn(),

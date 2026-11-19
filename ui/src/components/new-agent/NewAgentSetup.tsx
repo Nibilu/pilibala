@@ -453,6 +453,20 @@ function Setup({
   useEffect(() => {
     if (requestAccountModels) void refreshAccountModels();
   }, [requestAccountModels, accountModelScope, refreshAccountModels]);
+  // Harness-config model detection (AMB-311 P2b): for local CLI harnesses with a
+  // detectModel registry entry, surface the harness's own default config in the
+  // model dropdown ("Detect from config" / promoted adopt row) while no
+  // connection is selected. Connection-selected model lists come from the
+  // connection routing instead, so detection is gated off there.
+  const harnessDetection = useQuery({
+    queryKey: queryKeys.agents.detectModel(companyId, brandType),
+    queryFn: () => agentsApi.detectModel(companyId!, brandType),
+    enabled: Boolean(
+      companyId && brandType && showModel && !connectionModels
+      && (brandType === "codex_local" || brandType === "claude_local"
+        || brandType === "grok_local" || brandType === "pi_local"),
+    ),
+  });
   const environment = envs.data?.find((env) => env.id === environmentId);
   const setupEnvironmentKey = JSON.stringify([companyId, environmentId, environment?.config]);
   const setupEnvironmentRef = useRef("");
@@ -1438,13 +1452,27 @@ function Setup({
                                   resetTest();
                                 }}
                                 onRefreshModels={accountCatalogAvailable ? async () => { await models.refetch(); } : undefined}
-                                modelDropdownProps={{
+                                modelDropdownProps={connectionModels ? {
                                   presentation: brandType === "codex_local" ? "searchable" : "native",
                                   allowDefault: !isKimi && !multiProvider && !accountBoundCatalog && !nativeCursorCloud,
                                   required: isKimi || multiProvider || accountBoundCatalog || nativeCursorCloud,
                                   creatable: brandType !== "copilot_runtime",
                                   groupByProvider: multiProvider && !connectionModels,
                                   preserveOrder: Boolean(connectionModels) || adapterCuratesModelOrder(brandType) || brandType === "hermes_local",
+                                } : {
+                                  presentation: brandType === "codex_local" ? "searchable" : "native",
+                                  allowDefault: !isKimi && !multiProvider && !accountBoundCatalog && !nativeCursorCloud,
+                                  required: isKimi || multiProvider || accountBoundCatalog || nativeCursorCloud,
+                                  creatable: brandType !== "copilot_runtime",
+                                  groupByProvider: multiProvider && !connectionModels,
+                                  preserveOrder: Boolean(connectionModels) || adapterCuratesModelOrder(brandType) || brandType === "hermes_local",
+                                  // AMB-311 P2b: harness-config detection (adopt row + Detect button)
+                                  detectedModel: harnessDetection.data?.model || undefined,
+                                  detectedModelCandidates: harnessDetection.data?.candidates,
+                                  onDetectModel: async () => {
+                                    const result = await harnessDetection.refetch();
+                                    return result.data?.model || null;
+                                  },
                                 }}
                                 suppressModelError
                               />
