@@ -132,3 +132,4 @@ export const sessionCodec: AdapterSessionCodec = {
     );
   },
 };
+export { detectClaudeModel } from "./detect-model.js";

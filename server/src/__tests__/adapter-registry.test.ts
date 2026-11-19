@@ -142,6 +142,13 @@ describe("server adapter registry", () => {
     expect(builtInLocal?.detectModel).toBeTypeOf("function");
     expect(builtInLocal?.getConfigSchema).toBeTypeOf("function");
 
+    // AMB-311 P2: every local CLI harness self-describes its config home.
+    for (const type of ["codex_local", "claude_local", "grok_local", "pi_local"] as const) {
+      const builtInCli = findServerAdapter(type);
+      expect(builtInCli, type).not.toBeNull();
+      expect(builtInCli?.detectModel, type).toBeTypeOf("function");
+    }
+
     expect(builtInGateway).not.toBeNull();
     expect(builtInGateway?.supportsLocalAgentJwt).toBe(false);
     expect(builtInGateway?.supportsInstructionsBundle).toBe(false);

@@ -598,6 +598,12 @@ export interface ServerAdapterModule {
     baseUrl?: string;
     /** API mode from the detected config, when present. */
     apiMode?: string;
+    /**
+     * True when the harness's own config home was found on this host (AMB-311
+     * P2). Detectors return environment facts only — never credential values.
+     * Absent means "unknown" (e.g. a probe failure), not "not deployed".
+     */
+    deployed?: boolean;
   } | null>;
   /**
    * Optional write-guard invoked at the persistence boundary (agent create /
