@@ -55,6 +55,8 @@ export function useConnectionModelsState(
     : undefined;
   return {
     connectionModels,
+    /** Deterministic "directory not resolved yet" flag (unlike isLoading, it does not flicker false on the first frame). */
+    pending: accounts.isPending,
     loading: accounts.isLoading,
     refreshing: accounts.isFetching,
     error: accounts.error,

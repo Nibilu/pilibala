@@ -88,6 +88,20 @@ export function AgentBasicsDialog({
   });
   const adaptersView = useQueryView(adaptersQuery);
   const adapters = adaptersView.data;
+  // Local CLI deployment probe (AMB-311 plan §3): asked only while the adapter
+  // step is shown, plus on the grid's explicit re-check — never on a poll.
+  const [probeNonce, setProbeNonce] = useState(0);
+  const availabilityQuery = useQuery({
+    queryKey: [...queryKeys.adapters.cliAvailability(companyId ?? "none"), probeNonce],
+    queryFn: () => adaptersApi.availability(companyId!, { refresh: probeNonce > 0 }),
+    enabled: open && Boolean(companyId) && step === "adapter",
+    staleTime: 5 * 60_000,
+  });
+  const availability = new Map(
+    (availabilityQuery.data ?? []).map((row) => [row.type, row] as const),
+  );
+  const [guideForType, setGuideForType] = useState<string | null>(null);
+  const selectedNotDeployed = availability.get(adapterType)?.deployed === false;
   const nativeRunner = adapters?.find(adapter => adapter.type === "pilibala_runner" && adapter.loaded && !adapter.disabled && adapter.supportedRunners?.length !== 0);
   const copilotAvailable = Boolean(nativeRunner) && PILIBALA_RUNNER_ACPX_PROFILES.some(profile => profile.value === "copilot" && profile.qualified);
   const kimiAvailable = Boolean(nativeRunner) && experimental.data?.enableNativeRunner === true
@@ -116,7 +130,7 @@ export function AgentBasicsDialog({
   const validAdapter = choices.some((adapter) => adapter.type === adapterType)
     || (experimentalRunnerAvailable && adapterType === "pilibala_runner" && (runnerProvider !== "antigravity" || antigravityQualified));
   async function submit() {
-    if (busy.current || !name.trim() || (step === "adapter" && !validAdapter)) return;
+    if (busy.current || !name.trim() || (step === "adapter" && !validAdapter) || selectedNotDeployed) return;
     busy.current = true;
     setSaving(true);
     setSaveError(null);
@@ -280,43 +294,89 @@ export function AgentBasicsDialog({
                 <div className={cn("grid grid-cols-2 gap-3", choices.length !== 4 && "sm:grid-cols-3")}>
                   {choices.map((adapter) => {
                     const display = getAdapterDisplay(adapter.type);
+                    const row = availability.get(adapter.type);
+                    const notDeployed = row?.deployed === false;
+                    // The Not Found badge lives OUTSIDE the label so expanding
+                    // guidance never forwards a click to the harness radio.
                     return (
-                      <label
-                        key={adapter.type}
-                        className="relative cursor-pointer"
-                      >
-                        <input
-                          type="radio"
-                          disabled={saving}
-                          name="new-agent-adapter"
-                          value={adapter.type}
-                          checked={adapterType === adapter.type}
-                          onChange={() => setAdapterType(adapter.type)}
-                          className="peer sr-only"
-                        />
-                        <span
-                          className={cn(
-                            "flex h-full flex-col items-center gap-2 rounded-lg border px-3 py-4 text-center peer-focus-visible:ring-2 peer-focus-visible:ring-ring hover:bg-accent/40",
-                            adapterType === adapter.type
-                              ? "border-foreground/40 bg-accent"
-                              : "border-border bg-card",
-                          )}
-                        >
-                          <AdapterMark type={adapter.type} />
-                          <span className="text-sm font-medium">
-                            {display.label}
+                      <div key={adapter.type} className="relative">
+                        <label className="relative block cursor-pointer">
+                          <input
+                            type="radio"
+                            disabled={saving}
+                            name="new-agent-adapter"
+                            value={adapter.type}
+                            checked={adapterType === adapter.type}
+                            onChange={() => setAdapterType(adapter.type)}
+                            className="peer sr-only"
+                          />
+                          <span
+                            className={cn(
+                              "flex h-full flex-col items-center gap-2 rounded-lg border px-3 py-4 text-center peer-focus-visible:ring-2 peer-focus-visible:ring-ring hover:bg-accent/40",
+                              adapterType === adapter.type
+                                ? "border-foreground/40 bg-accent"
+                                : "border-border bg-card",
+                            )}
+                          >
+                            <span
+                              title={row?.version ? `${display.label} ${row.version}` : undefined}
+                              className={cn("block", notDeployed && "opacity-50 grayscale")}
+                            >
+                              <AdapterMark type={adapter.type} />
+                            </span>
+                            <span className="text-sm font-medium">
+                              {display.label}
+                            </span>
+                            {adapter.type === "antigravity_runtime" && !antigravityQualified && (
+                              <span className="text-xs text-muted-foreground">{antigravityCandidate ? "Candidate" : "Not available yet"}</span>
+                            )}
+                            {adapterType === adapter.type && (
+                              <Check className="absolute right-2 top-2 size-3.5" />
+                            )}
                           </span>
-                          {adapter.type === "antigravity_runtime" && !antigravityQualified && (
-                            <span className="text-xs text-muted-foreground">{antigravityCandidate ? "Candidate" : "Not available yet"}</span>
-                          )}
-                          {adapterType === adapter.type && (
-                            <Check className="absolute right-2 top-2 size-3.5" />
-                          )}
-                        </span>
-                      </label>
+                        </label>
+                        {notDeployed && (
+                          <div className="pointer-events-none absolute inset-x-0 bottom-1 flex justify-center">
+                            <button
+                              type="button"
+                              aria-expanded={guideForType === adapter.type}
+                              onClick={() => setGuideForType(guideForType === adapter.type ? null : adapter.type)}
+                              className="pointer-events-auto rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent"
+                            >
+                              Not Found
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
+                {guideForType && availability.get(guideForType)?.deployed === false && (
+                  <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                    <p>
+                      The {getAdapterDisplay(guideForType).label} CLI was not found in this
+                      server's environment, so local runs would fail. Install the CLI on this
+                      machine (or point the adapter's command setting at its path), then check
+                      again.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={availabilityQuery.isFetching}
+                      onClick={() => {
+                        setProbeNonce((nonce) => nonce + 1);
+                      }}
+                      className="mt-1 font-medium text-foreground underline-offset-2 hover:underline disabled:opacity-50"
+                    >
+                      {availabilityQuery.isFetching ? "Checking…" : "Check again"}
+                    </button>
+                  </div>
+                )}
+                {selectedNotDeployed && (
+                  <p role="status" className="text-xs text-muted-foreground">
+                    {getAdapterDisplay(adapterType).label} is not installed on this machine.
+                    Install it before creating this agent, or pick an installed harness.
+                  </p>
+                )}
                 {experimentalRunnerAvailable && <details className="space-y-3">
                   <summary className="cursor-pointer text-sm text-muted-foreground">Advanced</summary>
                   <div className="space-y-2">
@@ -353,7 +413,7 @@ export function AgentBasicsDialog({
             </Button>
             <Button
               type="submit"
-              disabled={saving || !name.trim() || (step === "adapter" && !validAdapter)}
+              disabled={saving || !name.trim() || (step === "adapter" && (!validAdapter || selectedNotDeployed))}
             >
               {saving ? "Saving…" : step === "name" ? "Choose adapter" : "Configure agent"}
               <ArrowRight className="size-4" />

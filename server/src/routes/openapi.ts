@@ -4127,6 +4127,20 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: "get",
+  path: "/api/companies/{companyId}/adapters/availability",
+  tags: ["adapters"],
+  summary: "Probe which CLI harnesses this server can spawn locally",
+  description:
+    "Runs a bounded `command --version` probe per CLI harness inside the server's own environment, with a short-TTL cache; `?refresh=1` bypasses it. Server-native and hosted harnesses are not probed. Read-only; never includes credential material.",
+  request: {
+    params: z.object({ companyId: z.string() }),
+    query: z.object({ refresh: z.string().optional() }),
+  },
+  responses: { 200: r.ok(), 401: r.unauthorized },
+});
+
+registry.registerPath({
   method: "post",
   path: "/api/companies/{companyId}/adapters/{type}/test-environment",
   tags: ["adapters"],

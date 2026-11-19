@@ -1,8 +1,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type Ref } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Check, ChevronDown, Plus, RotateCcw, Search, X, Zap } from "lucide-react";
-import { aiRuntimeConnectionBindingSchema, agentHarnessType, type Agent, type IssueAssigneeAdapterOverrides } from "@pilibalaai/shared";
+import {
+  aiConnectionBindingSchema,
+  aiRoutingHarness,
+  aiRuntimeConnectionBindingSchema,
+  agentHarnessType,
+  type Agent,
+  type IssueAssigneeAdapterOverrides,
+} from "@pilibalaai/shared";
 import { agentsApi, type AdapterModel } from "@/api/agents";
+import { useConnectionModelsState } from "@/components/ai-connections/useConnectionModels";
 import { queryKeys } from "@/lib/queryKeys";
 import { ACCOUNT_BOUND_MODEL_DISCOVERY_QUERY_OPTIONS, nativeTaskModelCatalogOptions } from "@/lib/native-model-catalog";
 import { cn } from "@/lib/utils";
@@ -125,6 +133,21 @@ export function ComposerRunSettingsPicker({
   const binding = aiRuntimeConnectionBindingSchema.safeParse(agent?.runtimeConfig?.aiConnection).data;
   const poolId = binding?.mode === "router" ? binding.connectionId : undefined;
   const nativeCatalog = nativeTaskModelCatalogOptions(agent);
+  // Managed account bindings replace the harness catalog with the bound
+  // connection's model directory (AMB-311 plan §2.3: connection catalog first,
+  // harness catalog as fallback). A router binding names a pool of accounts,
+  // not one catalog — the same narrowing the config surfaces apply. Account-
+  // bound native discovery (Copilot/Antigravity) keeps its adapter-owned
+  // catalog; the connection routing there carries no model list.
+  const accountBinding = nativeCatalog ? undefined : aiConnectionBindingSchema.safeParse(binding).data;
+  const harness = aiRoutingHarness(agent?.adapterType ?? "", agent?.adapterConfig?.provider, agent?.adapterConfig?.acpxAgent);
+  const connectionState = useConnectionModelsState(companyId, accountBinding, harness);
+  const connectionModels = connectionState.connectionModels;
+  // While the connection directory itself is still resolving, hold the harness
+  // catalog back — its list would be discarded the moment the binding resolves.
+  const connectionCatalogActive = Boolean(!nativeCatalog
+    && ((connectionState.pending && accountBinding)
+      || (connectionModels && (connectionModels.isLoading || connectionModels.models.length > 0))));
   const acpxAgent = agent?.adapterType === "pilibala_runner" && provider === "acpx" && typeof agent.adapterConfig.acpxAgent === "string" ? agent.adapterConfig.acpxAgent : undefined;
   const nativeCatalogScope = JSON.stringify(nativeCatalog ?? null);
   const requestNativeModels = Boolean(nativeCatalog && open && view !== "agents" && !modelOptionsOverride);
@@ -136,16 +159,20 @@ export function ComposerRunSettingsPicker({
       environmentId: agent!.defaultEnvironmentId ?? null, provider, poolId, acpxAgent, ...nativeCatalog,
     }),
     ...(nativeCatalog ? ACCOUNT_BOUND_MODEL_DISCOVERY_QUERY_OPTIONS : {}),
-    enabled: Boolean(agent && modelSupported && !modelOptionsOverride && (!nativeCatalog || requestNativeModels)),
+    enabled: Boolean(agent && modelSupported && !modelOptionsOverride && !connectionCatalogActive
+      && (!nativeCatalog || requestNativeModels)),
   });
   useEffect(() => {
     if (requestNativeModels) void refreshModels();
   }, [requestNativeModels, nativeCatalogScope, companyId, agent?.defaultEnvironmentId, refreshModels]);
   // The server resolves instance-declared models first and otherwise returns the
   // adapter's curated catalog. Do not replace a declared Codex list locally.
+  // A bound connection's catalog wins whenever it is active (loading or has
+  // models); the harness catalog covers everything else.
   const models: readonly (AdapterModel & { detail?: string })[] = modelOptionsOverride
-    ?? fetchedModels;
-  const catalogPending = modelsPending && !modelOptionsOverride;
+    ?? (connectionCatalogActive ? connectionModels?.models ?? [] : fetchedModels);
+  const catalogPending = !modelOptionsOverride
+    && (connectionCatalogActive ? connectionModels?.isLoading ?? true : modelsPending);
   const base = assigneeValue === currentAssigneeValue
     ? readComposerRunSettings(overrides, agent?.adapterType)
     : DEFAULT_COMPOSER_RUN_SETTINGS;

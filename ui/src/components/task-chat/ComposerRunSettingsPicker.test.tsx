@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Agent } from "@pilibalaai/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { agentsApi } from "@/api/agents";
+import { aiConnectionsApi } from "@/api/ai-connections";
 import { ComposerRunSettingsPicker } from "./ComposerRunSettingsPicker";
 import type { ComposerRunSettings } from "./composer-run-settings";
 import { getLastComposerEffort, rememberComposerEffort } from "@/lib/recent-composer-effort";
@@ -335,6 +336,67 @@ describe("composer assignee picker", () => {
     expect(manual?.disabled).toBe(false);
     await act(async () => manual!.click());
     expect(onSettingsChange).toHaveBeenLastCalledWith(expect.objectContaining({ model: "gemini-custom-exact" }));
+  });
+
+  it("serves the bound connection's model directory instead of the harness catalog", async () => {
+    const binding = {
+      provider: "openai", method: "api_key", mode: "shared",
+      connectionId: "11111111-1111-4111-8111-111111111111",
+      grantId: "33333333-3333-4333-8333-333333333333",
+    } as const;
+    const boundAgent = { ...agent, adapterType: "hermes_local", adapterConfig: {},
+      runtimeConfig: { aiConnection: binding } } as Agent;
+    const loadModels = vi.spyOn(agentsApi, "adapterModels");
+    vi.spyOn(aiConnectionsApi, "list").mockResolvedValueOnce({
+      currentUserId: "user-1",
+      canManageConnections: true,
+      connections: [{
+        id: binding.connectionId, grantId: binding.grantId, companyId: "company-1",
+        provider: "openai", method: "api_key", name: "Team gateway",
+        ownership: "shared", isDefault: false, status: "connected",
+        routing: { kind: "gateway", protocol: "chat", auth: "bearer", models: [
+          { id: "minimaxai/minimax-m3.1-flash", label: "MiniMax M3.1 Flash" },
+        ] },
+      }],
+    });
+    const onSettingsChange = vi.fn();
+    render(vi.fn(), onSettingsChange, true, { agents: new Map([[agent.id, boundAgent]]), settings: null });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    // The connection catalog replaces the harness catalog fetch entirely.
+    expect(loadModels).not.toHaveBeenCalled();
+    await click("Select model and effort");
+    await click("Choose exact model");
+    const choices = [...document.querySelectorAll<HTMLButtonElement>('button[role="option"]')]
+      .map((item) => item.textContent ?? "");
+    expect(choices.some((item) => item.includes("MiniMax M3.1 Flash"))).toBe(true);
+    await click("MiniMax M3.1 Flash");
+    expect(onSettingsChange).toHaveBeenLastCalledWith({ model: "minimaxai/minimax-m3.1-flash", effort: null, fast: false });
+  });
+
+  it("falls back to the harness catalog when the bound connection resolves to nothing", async () => {
+    const binding = {
+      provider: "openai", method: "api_key", mode: "shared",
+      connectionId: "11111111-1111-4111-8111-111111111111",
+      grantId: "33333333-3333-4333-8333-333333333333",
+    } as const;
+    const boundAgent = { ...agent, adapterType: "hermes_local", adapterConfig: {},
+      runtimeConfig: { aiConnection: binding } } as Agent;
+    vi.spyOn(aiConnectionsApi, "list").mockResolvedValueOnce({
+      currentUserId: "user-1", canManageConnections: true, connections: [],
+    });
+    const loadModels = vi.spyOn(agentsApi, "adapterModels").mockResolvedValue([
+      { id: "hermes-model", label: "Hermes Model" },
+    ]);
+    render(vi.fn(), vi.fn(), true, { agents: new Map([[agent.id, boundAgent]]), settings: null });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await click("Select model and effort");
+    await click("Choose exact model");
+    expect(loadModels).toHaveBeenCalledWith("company-1", "hermes_local", {
+      environmentId: null, provider: undefined,
+    });
+    const choices = [...document.querySelectorAll<HTMLButtonElement>('button[role="option"]')]
+      .map((item) => item.textContent ?? "");
+    expect(choices.some((item) => item.includes("Hermes Model"))).toBe(true);
   });
 
   it("preserves settings when the selected assignee is chosen again", async () => {
