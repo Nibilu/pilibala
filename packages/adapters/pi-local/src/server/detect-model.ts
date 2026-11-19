@@ -18,7 +18,10 @@
  * credential values.
  */
 
-import { discoverPiModelsCached } from "./models.js";
+import { stat } from "node:fs/promises";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { discoverPiModels } from "./models.js";
 
 export interface DetectedPiModel {
   model: string;
@@ -30,10 +33,27 @@ export interface DetectedPiModel {
   source: "probe";
 }
 
+/** Resolve the pi CLI the same way runs do (PILIBALA_PI_COMMAND > "pi"),
+ * with one extra fallback: pi's managed agent home, which is its official
+ * install location and may sit outside the server process PATH. */
+export async function resolvePiDetectCommand(): Promise<string | null> {
+  const override = process.env.PILIBALA_PI_COMMAND?.trim();
+  if (override) return override;
+  const managedHome = join(homedir(), ".pi", "agent", "bin", "pi");
+  try {
+    const homeStat = await stat(managedHome);
+    if (homeStat.isFile()) return managedHome;
+  } catch {
+    // fall through to PATH lookup
+  }
+  return "pi";
+}
+
 export async function detectPiModel(): Promise<DetectedPiModel | null> {
   let models: { id: string }[];
   try {
-    models = await discoverPiModelsCached();
+    const command = await resolvePiDetectCommand();
+    models = await discoverPiModels({ command });
   } catch {
     // pi missing or the probe failed: unknown, not "not deployed".
     return null;
