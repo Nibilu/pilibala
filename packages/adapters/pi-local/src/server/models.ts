@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { AdapterModel } from "@pilibalaai/adapter-utils";
 import { asString, runChildProcess, sanitizeInheritedPilibalaEnv } from "@pilibalaai/adapter-utils/server-utils";
 
@@ -64,12 +67,23 @@ function sortModels(models: AdapterModel[]): AdapterModel[] {
 }
 
 function resolvePiCommand(input: unknown): string {
+  const explicit = asString(input, "");
+  if (explicit.trim()) return explicit;
   const envOverride =
     typeof process.env.PILIBALA_PI_COMMAND === "string" &&
     process.env.PILIBALA_PI_COMMAND.trim().length > 0
       ? process.env.PILIBALA_PI_COMMAND.trim()
-      : "pi";
-  return asString(input, envOverride);
+      : "";
+  if (envOverride) return envOverride;
+  // pi's managed agent home sits outside many service PATHs; probe it before
+  // falling back to a bare PATH lookup (shared precedence with execution).
+  try {
+    const managedHome = join(homedir(), ".pi", "agent", "bin", "pi");
+    if (statSync(managedHome).isFile()) return managedHome;
+  } catch {
+    // fall through
+  }
+  return "pi";
 }
 
 const discoveryCache = new Map<string, { expiresAt: number; models: AdapterModel[] }>();
