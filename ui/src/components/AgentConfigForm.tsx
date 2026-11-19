@@ -2120,7 +2120,13 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   preserveOrder: Boolean(connectionModels) || adapterCuratesModelOrder(adapterType),
                   creatable: true,
                   detectedModel: connectionModels ? undefined : detectedModel,
-                  detectedModelCandidates: [],
+                  // AMB-311 P2b: surface the harness detector's local-config
+                  // candidates (e.g. pi's credential-gated catalog when the
+                  // adapter-models list came back empty) without duplicating
+                  // ids the regular list already shows.
+                  detectedModelCandidates: connectionModels ? [] : (detectedModelData?.candidates ?? []).filter(
+                    (candidateId) => !(fetchedModels ?? []).some((m) => m.id === candidateId),
+                  ),
                   onDetectModel: connectionModels || adapterType === "opencode_local" || adapterType === "pilibala_runner"
                     ? undefined
                     : async () => {
