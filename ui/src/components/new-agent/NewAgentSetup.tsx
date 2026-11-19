@@ -61,7 +61,7 @@ import {
   storeOrganizationApiKey,
 } from "@/lib/provider-credential";
 import { defaultCreateValues } from "../agent-config-defaults";
-import { ModelDropdown } from "../AgentConfigForm";
+import { ProviderModelLinkageConnection, ProviderModelLinkageModelSelect } from "../ai-connections/ProviderModelLinkageSelect";
 import { Field, ToggleField } from "../agent-config-primitives";
 import { SecretPicker } from "../environment-variables-editor/SecretPicker";
 import { Button } from "../ui/button";
@@ -1309,33 +1309,35 @@ function Setup({
                             checked={allowUnmeteredProvider} onChange={value => { setAllowUnmeteredProvider(value); resetTest(); }} />
                         </>}
                         {!connectionAdapter && aiProviderForAdapter(brandType) && (
-                          brandType === "hermes_local" ? (
-                            // Hermes default path needs no managed connection.
-                            // The Connections flow (account binding, shared
-                            // credentials, gateway/local endpoints) stays
-                            // reachable but collapsed under Advanced.
-                            <details className="space-y-3">
-                              <summary className="cursor-pointer text-sm text-muted-foreground">
-                                Advanced: Connect a provider account
-                              </summary>
-                              {detectedHermesModel.data && (
-                                <p className="text-xs text-muted-foreground">
-                                  Hermes default: {detectedHermesModel.data.model}
-                                  {detectedHermesProvider ? ` · provider ${detectedHermesProvider}` : ""}
-                                  {detectedHermesModel.data.hasApiKey ? " · credential configured" : " · no credential in ~/.hermes/.env"}
-                                </p>
-                              )}
-                              <AiConnectionField companyId={companyId} agentName={name} adapterType={brandType} model={model} environmentId={environmentId ?? undefined} value={aiBinding}
-                                initialWizardProvider={hermesWizardPreset?.provider}
-                                initialWizardProtocol={hermesWizardPreset?.protocol}
-                                initialWizardBaseUrl={hermesWizardPreset?.baseUrl}
-                                onChange={binding => { binding.mode !== "router" && setRuntimeAiBinding(binding); resetTest(); }} />
-                            </details>
-                          ) : (
-                            <AiConnectionField companyId={companyId} agentName={name} adapterType={brandType} model={model} environmentId={environmentId ?? undefined} value={aiBinding}
-                              onChange={binding => { binding.mode !== "router" && setRuntimeAiBinding(binding); resetTest();
-                                if (accountCatalogAvailable && hashKey([aiBinding ?? null]) === hashKey([binding ?? null])) void refreshAccountModels(); }} />
-                          )
+                          // Hermes default path needs no managed connection.
+                          // The Connections flow (account binding, shared
+                          // credentials, gateway/local endpoints) stays
+                          // reachable but collapsed under Advanced. The shared
+                          // field also explains when no managed connection is
+                          // compatible with this harness (AMB-311).
+                          <ProviderModelLinkageConnection
+                            companyId={companyId}
+                            agentName={name}
+                            harness={brandType}
+                            environmentId={environmentId ?? undefined}
+                            binding={aiBinding}
+                            model={model}
+                            advancedConnection={brandType === "hermes_local"}
+                            wizardPresets={brandType === "hermes_local" ? {
+                              provider: hermesWizardPreset?.provider,
+                              protocol: hermesWizardPreset?.protocol,
+                              baseUrl: hermesWizardPreset?.baseUrl,
+                            } : undefined}
+                            connectionDetailsExtra={brandType === "hermes_local" && detectedHermesModel.data ? (
+                              <p className="text-xs text-muted-foreground">
+                                Hermes default: {detectedHermesModel.data.model}
+                                {detectedHermesProvider ? ` · provider ${detectedHermesProvider}` : ""}
+                                {detectedHermesModel.data.hasApiKey ? " · credential configured" : " · no credential in ~/.hermes/.env"}
+                              </p>
+                            ) : undefined}
+                            onBindingChange={binding => { binding.mode !== "router" && setRuntimeAiBinding(binding); resetTest();
+                              if (accountCatalogAvailable && hashKey([aiBinding ?? null]) === hashKey([binding ?? null])) void refreshAccountModels(); }}
+                          />
                         )}
                         {brandType === "hermes_local" && (
                           <SchemaConfigFields
@@ -1402,27 +1404,28 @@ function Setup({
                           efforts.length > 0) && (
                           <div className="grid items-start gap-5 sm:grid-cols-2">
                             {showModel && !usingKimiApi && (
-                              <ModelDropdown
-                                presentation={brandType === "codex_local" ? "searchable" : "native"}
-                                models={connectionModels?.models ?? (brandType === "hermes_local" ? (hermesModelList ?? (models.data ?? [])) : (models.data ?? []))}
-                                loadingModels={connectionModels?.isLoading ?? (brandType === "hermes_local"
+                              <ProviderModelLinkageModelSelect
+                                companyId={companyId}
+                                harness={brandType}
+                                onAutoRebind={(_connectionName, rebind) => { setRuntimeAiBinding(rebind); resetTest(); }}
+                                modelValue={model}
+                                binding={aiBinding}
+                                fallbackModels={brandType === "hermes_local" ? (hermesModelList ?? (models.data ?? [])) : (models.data ?? [])}
+                                fallbackModelsLoading={brandType === "hermes_local"
                                   ? (isHermesDefaultProvider
                                     ? (detectedHermesProvider ? hermesDefaultModels.isLoading : models.isLoading)
                                     : providerModels.isLoading)
-                                  : models.isLoading)}
-                                onRefreshModels={connectionModels?.refreshModels ?? (accountCatalogAvailable ? async () => { await models.refetch(); } : undefined)}
-                                refreshingModels={connectionModels?.refreshing ?? (accountCatalogAvailable ? models.isFetching : undefined)}
-                                value={model}
-                                onChange={(value) => {
-                                  setModel(connectionModels?.resolveModel(value) ?? value);
+                                  : models.isLoading}
+                                onModelSelect={(resolvedId, rawId) => {
+                                  setModel(resolvedId);
                                   if (
                                     effort &&
-                                    !setupEfforts(adapterType, value).includes(
+                                    !setupEfforts(adapterType, rawId).includes(
                                       effort,
                                     )
                                   )
                                     setEffort("");
-                                  const nextProvider = value.split("/")[0];
+                                  const nextProvider = rawId.split("/")[0];
                                   if (
                                     multiProvider &&
                                     PROVIDER_ENV_KEYS[nextProvider] &&
@@ -1434,13 +1437,16 @@ function Setup({
                                   }
                                   resetTest();
                                 }}
-                                open={modelOpen}
-                                onOpenChange={setModelOpen}
-                                allowDefault={!isKimi && !multiProvider && !accountBoundCatalog && !nativeCursorCloud}
-                                required={isKimi || multiProvider || accountBoundCatalog || nativeCursorCloud}
-                                creatable={brandType !== "copilot_runtime"}
-                                groupByProvider={multiProvider && !connectionModels}
-                                preserveOrder={Boolean(connectionModels) || adapterCuratesModelOrder(brandType) || brandType === "hermes_local"}
+                                onRefreshModels={accountCatalogAvailable ? async () => { await models.refetch(); } : undefined}
+                                modelDropdownProps={{
+                                  presentation: brandType === "codex_local" ? "searchable" : "native",
+                                  allowDefault: !isKimi && !multiProvider && !accountBoundCatalog && !nativeCursorCloud,
+                                  required: isKimi || multiProvider || accountBoundCatalog || nativeCursorCloud,
+                                  creatable: brandType !== "copilot_runtime",
+                                  groupByProvider: multiProvider && !connectionModels,
+                                  preserveOrder: Boolean(connectionModels) || adapterCuratesModelOrder(brandType) || brandType === "hermes_local",
+                                }}
+                                suppressModelError
                               />
                             )}
                             {efforts.length > 0 && (
