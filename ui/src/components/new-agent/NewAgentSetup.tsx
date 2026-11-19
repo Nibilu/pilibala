@@ -1365,6 +1365,11 @@ function Setup({
                             ) : undefined}
                             onBindingChange={binding => { binding.mode !== "router" && setRuntimeAiBinding(binding); resetTest();
                               if (accountCatalogAvailable && hashKey([aiBinding ?? null]) === hashKey([binding ?? null])) void refreshAccountModels(); }}
+                            // Expose "Default connection" in the wizard too (the
+                            // Harness/Runtime tab has it): clearing the binding
+                            // means the harness's own local config serves runs
+                            // and harness-config detection drives the model list.
+                            onBindingClear={() => { setRuntimeAiBinding(undefined); resetTest(); }}
                           />
                         )}
                         {brandType === "hermes_local" && (
