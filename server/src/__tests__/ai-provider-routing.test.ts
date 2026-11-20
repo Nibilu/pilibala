@@ -24,7 +24,7 @@ describe("provider routing", () => {
     expect(isAiConnectionCompatible({ provider: "openai", method: "api_key", routing: aiProviderRoutingSchema.parse({ kind: "gateway", protocol: "chat", baseUrl: "https://gateway.example/v1" }) }, "pi_local", "custom/model")).toBe(true);
   });
   it("projects a managed gateway connection to Pi via PILIBALA_PI_PROVIDERS", () => {
-    const routing = aiProviderRoutingSchema.parse({ kind: "gateway", protocol: "chat", baseUrl: "https://gateway.example/v1", auth: "api_key", models: [{ id: "model-a" }, { id: "model-b" }] });
+    const routing = aiProviderRoutingSchema.parse({ kind: "gateway", protocol: "chat", baseUrl: "https://gateway.example/v1", auth: "bearer", models: [{ id: "model-a" }, { id: "model-b" }] });
     expect(isAiRoutingCompatible(routing, "pi_local")).toBe(true);
     const projected = managedProviderRouting(routing, "pi_local", "gw-secret-key", "model-a");
     expect(projected.config).toMatchObject({ model: "pilibala/model-a" });
