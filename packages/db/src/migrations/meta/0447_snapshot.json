@@ -1,6 +1,6 @@
 {
-  "id": "d290d707-7d29-43a0-a697-06eecbdb743d",
-  "prevId": "69e6941f-890f-43d8-af7c-2e3e24ebfcd5",
+  "id": "3ce1162f-bf35-44d9-b626-7e63aa52e137",
+  "prevId": "fc291982-7cb7-476d-af1b-897c656d4879",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1879,6 +1879,518 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.agent_capability_observations": {
+      "name": "agent_capability_observations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "adapter_type": {
+          "name": "adapter_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "endpoint_label": {
+          "name": "endpoint_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unversioned'"
+        },
+        "protocol_version": {
+          "name": "protocol_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operations": {
+          "name": "operations",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "error": {
+          "name": "error",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "document": {
+          "name": "document",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "observed_extras": {
+          "name": "observed_extras",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checked_at": {
+          "name": "checked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "freshness_deadline": {
+          "name": "freshness_deadline",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_by_user_id": {
+          "name": "requested_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_by_agent_id": {
+          "name": "requested_by_agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "agent_capability_observations_company_agent_checked_idx": {
+          "name": "agent_capability_observations_company_agent_checked_idx",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "checked_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_capability_observations_agent_checked_idx": {
+          "name": "agent_capability_observations_agent_checked_idx",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "checked_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_capability_observations_agent_adapter_checked_uq": {
+          "name": "agent_capability_observations_agent_adapter_checked_uq",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "adapter_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "checked_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "agent_capability_observations_company_id_companies_id_fk": {
+          "name": "agent_capability_observations_company_id_companies_id_fk",
+          "tableFrom": "agent_capability_observations",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "agent_capability_observations_agent_id_agents_id_fk": {
+          "name": "agent_capability_observations_agent_id_agents_id_fk",
+          "tableFrom": "agent_capability_observations",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "agent_capability_observations_requested_by_agent_id_agents_id_fk": {
+          "name": "agent_capability_observations_requested_by_agent_id_agents_id_fk",
+          "tableFrom": "agent_capability_observations",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "requested_by_agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "capability_observations_company_agent_fk": {
+          "name": "capability_observations_company_agent_fk",
+          "tableFrom": "agent_capability_observations",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "company_id",
+            "agent_id"
+          ],
+          "columnsTo": [
+            "company_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "capability_observations_company_requester_fk": {
+          "name": "capability_observations_company_requester_fk",
+          "tableFrom": "agent_capability_observations",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "company_id",
+            "requested_by_agent_id"
+          ],
+          "columnsTo": [
+            "company_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "agent_capability_observations_company_id_uq": {
+          "name": "agent_capability_observations_company_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "company_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.agent_capability_upgrade_requests": {
+      "name": "agent_capability_upgrade_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observation_id": {
+          "name": "observation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issue_id": {
+          "name": "issue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "selected_agent_id": {
+          "name": "selected_agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "diff": {
+          "name": "diff",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requested_by_user_id": {
+          "name": "requested_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_by_agent_id": {
+          "name": "requested_by_agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "admission_state": {
+          "name": "admission_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'awaiting_user_confirmation'"
+        },
+        "confirmed_at": {
+          "name": "confirmed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confirmed_by_user_id": {
+          "name": "confirmed_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "capability_upgrade_key_uq": {
+          "name": "capability_upgrade_key_uq",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "capability_upgrade_observation_uq": {
+          "name": "capability_upgrade_observation_uq",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "observation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "capability_upgrade_issue_uq": {
+          "name": "capability_upgrade_issue_uq",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "issue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "agent_capability_upgrade_requests_company_id_companies_id_fk": {
+          "name": "agent_capability_upgrade_requests_company_id_companies_id_fk",
+          "tableFrom": "agent_capability_upgrade_requests",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "capability_upgrade_observation_fk": {
+          "name": "capability_upgrade_observation_fk",
+          "tableFrom": "agent_capability_upgrade_requests",
+          "tableTo": "agent_capability_observations",
+          "columnsFrom": [
+            "company_id",
+            "observation_id"
+          ],
+          "columnsTo": [
+            "company_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "capability_upgrade_issue_fk": {
+          "name": "capability_upgrade_issue_fk",
+          "tableFrom": "agent_capability_upgrade_requests",
+          "tableTo": "issues",
+          "columnsFrom": [
+            "company_id",
+            "issue_id"
+          ],
+          "columnsTo": [
+            "company_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "capability_upgrade_agent_fk": {
+          "name": "capability_upgrade_agent_fk",
+          "tableFrom": "agent_capability_upgrade_requests",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "company_id",
+            "selected_agent_id"
+          ],
+          "columnsTo": [
+            "company_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "capability_upgrade_requester_fk": {
+          "name": "capability_upgrade_requester_fk",
+          "tableFrom": "agent_capability_upgrade_requests",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "company_id",
+            "requested_by_agent_id"
+          ],
+          "columnsTo": [
+            "company_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "capability_upgrade_admission_check": {
+          "name": "capability_upgrade_admission_check",
+          "value": "(\"agent_capability_upgrade_requests\".\"admission_state\" = 'awaiting_user_confirmation' AND \"agent_capability_upgrade_requests\".\"confirmed_at\" IS NULL AND \"agent_capability_upgrade_requests\".\"confirmed_by_user_id\" IS NULL) OR (\"agent_capability_upgrade_requests\".\"admission_state\" = 'admitted' AND \"agent_capability_upgrade_requests\".\"confirmed_at\" IS NOT NULL AND \"agent_capability_upgrade_requests\".\"confirmed_by_user_id\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.agent_commentary": {
       "name": "agent_commentary",
       "schema": "",
@@ -2789,7 +3301,7 @@
             }
           ],
           "isUnique": false,
-          "where": "NOT (coalesce(\"agent_instruction_working_copies\".\"receipt\", '{}'::jsonb) ? 'retainedByRunId') AND (\n      (\"agent_instruction_working_copies\".\"attempts\" < 3 AND (\"agent_instruction_working_copies\".\"state\" IN ('prepared', 'pending_collection', 'unchanged_turn', 'warm_saved')\n        OR (\"agent_instruction_working_copies\".\"state\" = 'preparing' AND \"agent_instruction_working_copies\".\"receipt\"->>'schema' = 'paperclip.agent-files.v1')))\n      OR (\"agent_instruction_working_copies\".\"state\" = 'unavailable' AND \"agent_instruction_working_copies\".\"process_stopped_at\" IS NULL\n        AND \"agent_instruction_working_copies\".\"location\" LIKE 'remote:%' AND \"agent_instruction_working_copies\".\"receipt\"->>'schema' = 'paperclip.agent-files.v1'))",
+          "where": "NOT (coalesce(\"agent_instruction_working_copies\".\"receipt\", '{}'::jsonb) ? 'retainedByRunId') AND (\n      (\"agent_instruction_working_copies\".\"attempts\" < 3 AND (\"agent_instruction_working_copies\".\"state\" IN ('prepared', 'pending_collection', 'unchanged_turn', 'warm_saved')\n        OR (\"agent_instruction_working_copies\".\"state\" = 'preparing' AND \"agent_instruction_working_copies\".\"receipt\"->>'schema' = 'pilibala.agent-files.v1')))\n      OR (\"agent_instruction_working_copies\".\"state\" = 'unavailable' AND \"agent_instruction_working_copies\".\"process_stopped_at\" IS NULL\n        AND \"agent_instruction_working_copies\".\"location\" LIKE 'remote:%' AND \"agent_instruction_working_copies\".\"receipt\"->>'schema' = 'pilibala.agent-files.v1'))",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2811,7 +3323,7 @@
             }
           ],
           "isUnique": false,
-          "where": "\"agent_instruction_working_copies\".\"state\" IN ('saved', 'unchanged', 'resolved', 'unavailable')\n      AND \"agent_instruction_working_copies\".\"process_stopped_at\" IS NOT NULL\n      AND \"agent_instruction_working_copies\".\"receipt\"->>'schema' = 'paperclip.agent-files.v1'\n      AND coalesce(\"agent_instruction_working_copies\".\"receipt\"->>'retainedByRunId', '') = ''\n      AND \"agent_instruction_working_copies\".\"receipt\"->>'cleanupPending' IS DISTINCT FROM 'false'\n      AND (\"agent_instruction_working_copies\".\"receipt\" ? 'baseline' OR \"agent_instruction_working_copies\".\"receipt\"->>'cleanupPending' = 'true')",
+          "where": "\"agent_instruction_working_copies\".\"state\" IN ('saved', 'unchanged', 'resolved', 'unavailable')\n      AND \"agent_instruction_working_copies\".\"process_stopped_at\" IS NOT NULL\n      AND \"agent_instruction_working_copies\".\"receipt\"->>'schema' = 'pilibala.agent-files.v1'\n      AND coalesce(\"agent_instruction_working_copies\".\"receipt\"->>'retainedByRunId', '') = ''\n      AND \"agent_instruction_working_copies\".\"receipt\"->>'cleanupPending' IS DISTINCT FROM 'false'\n      AND (\"agent_instruction_working_copies\".\"receipt\" ? 'baseline' OR \"agent_instruction_working_copies\".\"receipt\"->>'cleanupPending' = 'true')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -11969,8 +12481,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "paperclip_user_id": {
-          "name": "paperclip_user_id",
+        "pilibala_user_id": {
+          "name": "pilibala_user_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -12032,7 +12544,7 @@
               "nulls": "last"
             },
             {
-              "expression": "paperclip_user_id",
+              "expression": "pilibala_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -17819,7 +18331,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'paperclip_managed'"
+          "default": "'pilibala_managed'"
         },
         "external_ref": {
           "name": "external_ref",
@@ -28979,7 +29491,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"environments\".\"driver\" = 'sandbox' AND (\"environments\".\"metadata\" ->> 'managedByPaperclip')::boolean = true",
+          "where": "\"environments\".\"driver\" = 'sandbox' AND (\"environments\".\"metadata\" ->> 'managedByPilibala')::boolean = true",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -30367,7 +30879,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'paperclip.remote-workspace-archive.v1'"
+          "default": "'pilibala.remote-workspace-archive.v1'"
         },
         "object_key": {
           "name": "object_key",
@@ -32118,21 +32630,21 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'paperclip-feedback-envelope-v2'"
+          "default": "'pilibala-feedback-envelope-v2'"
         },
         "bundle_version": {
           "name": "bundle_version",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'paperclip-feedback-bundle-v2'"
+          "default": "'pilibala-feedback-bundle-v2'"
         },
         "payload_version": {
           "name": "payload_version",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'paperclip-feedback-v1'"
+          "default": "'pilibala-feedback-v1'"
         },
         "payload_digest": {
           "name": "payload_digest",
@@ -34880,6 +35392,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "process_host_hash": {
+          "name": "process_host_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "legacy_process_settlement": {
           "name": "legacy_process_settlement",
           "type": "jsonb",
@@ -35060,7 +35578,7 @@
             }
           ],
           "isUnique": false,
-          "where": "\"heartbeat_runs\".\"runtime_mode\" = 'native' AND \"heartbeat_runs\".\"status\" = 'cancelled'\n        AND \"heartbeat_runs\".\"runner_profile_json\"->'nativeWorkspaceSync'->>'state' = 'prepared'\n        AND \"heartbeat_runs\".\"result_json\"->'nativeCancellation'->>'dispatchState' = 'acknowledged'\n        AND (\"heartbeat_runs\".\"result_json\"->'workspaceRestoreRecovery'->>'schema' = 'paperclip.workspace-restore-recovery.v1'\n          AND \"heartbeat_runs\".\"result_json\"->>'workspaceRestoreFailure' IN ('restore_permission_denied', 'restore_lock_timeout', 'restore_unsafe_archive', 'restore_invalid_metadata', 'restore_failed')) IS NOT TRUE",
+          "where": "\"heartbeat_runs\".\"runtime_mode\" = 'native' AND \"heartbeat_runs\".\"status\" = 'cancelled'\n        AND \"heartbeat_runs\".\"runner_profile_json\"->'nativeWorkspaceSync'->>'state' = 'prepared'\n        AND \"heartbeat_runs\".\"result_json\"->'nativeCancellation'->>'dispatchState' = 'acknowledged'\n        AND (\"heartbeat_runs\".\"result_json\"->'workspaceRestoreRecovery'->>'schema' = 'pilibala.workspace-restore-recovery.v1'\n          AND \"heartbeat_runs\".\"result_json\"->>'workspaceRestoreFailure' IN ('restore_permission_denied', 'restore_lock_timeout', 'restore_unsafe_archive', 'restore_invalid_metadata', 'restore_failed')) IS NOT TRUE",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -35076,7 +35594,7 @@
             }
           ],
           "isUnique": false,
-          "where": "\"heartbeat_runs\".\"result_json\"->'workspaceRestoreRecovery'->>'schema' = 'paperclip.workspace-restore-recovery.v1'\n        and not (coalesce(\"heartbeat_runs\".\"result_json\", '{}'::jsonb) ? 'systemRecoveryAdoption')\n        and \"heartbeat_runs\".\"status\" in ('failed', 'interrupted', 'timed_out', 'cancelled', 'succeeded')",
+          "where": "\"heartbeat_runs\".\"result_json\"->'workspaceRestoreRecovery'->>'schema' = 'pilibala.workspace-restore-recovery.v1'\n        and not (coalesce(\"heartbeat_runs\".\"result_json\", '{}'::jsonb) ? 'systemRecoveryAdoption')\n        and \"heartbeat_runs\".\"status\" in ('failed', 'interrupted', 'timed_out', 'cancelled', 'succeeded')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -35487,8 +36005,8 @@
           "method": "btree",
           "with": {}
         },
-        "heartbeat_runs_company_ctx_paperclip_issue_created_idx": {
-          "name": "heartbeat_runs_company_ctx_paperclip_issue_created_idx",
+        "heartbeat_runs_company_ctx_pilibala_issue_created_idx": {
+          "name": "heartbeat_runs_company_ctx_pilibala_issue_created_idx",
           "columns": [
             {
               "expression": "company_id",
@@ -35497,7 +36015,7 @@
               "nulls": "last"
             },
             {
-              "expression": "(\"context_snapshot\" -> 'paperclipIssue' ->> 'id')",
+              "expression": "(\"context_snapshot\" -> 'pilibalaIssue' ->> 'id')",
               "asc": true,
               "isExpression": true,
               "nulls": "last"
@@ -39811,7 +40329,7 @@
             }
           ],
           "isUnique": false,
-          "where": "not (\"issue_recovery_actions\".\"evidence\" ? 'systemRecovery') and (\n        \"issue_recovery_actions\".\"evidence\"->'workspaceRestoreRecovery'->>'schema' = 'paperclip.workspace-restore-recovery.v1'\n        or \"issue_recovery_actions\".\"cause\" in ('native_workspace_sync_out_unrecoverable', 'native_workspace_sync_out_retry_exhausted')\n      )",
+          "where": "not (\"issue_recovery_actions\".\"evidence\" ? 'systemRecovery') and (\n        \"issue_recovery_actions\".\"evidence\"->'workspaceRestoreRecovery'->>'schema' = 'pilibala.workspace-restore-recovery.v1'\n        or \"issue_recovery_actions\".\"cause\" in ('native_workspace_sync_out_unrecoverable', 'native_workspace_sync_out_retry_exhausted')\n      )",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -39827,7 +40345,7 @@
             }
           ],
           "isUnique": false,
-          "where": "\n      (\"issue_recovery_actions\".\"evidence\"->'workspaceRestoreRecovery'->>'schema' = 'paperclip.workspace-restore-recovery.v1'\n        or \"issue_recovery_actions\".\"cause\" in ('native_workspace_sync_out_unrecoverable', 'native_workspace_sync_out_retry_exhausted'))\n      and (\"issue_recovery_actions\".\"evidence\"->'executionReconciliation' is null\n        or \"issue_recovery_actions\".\"evidence\"#>>'{workspaceRecovery,status}' = 'recovered')\n    ",
+          "where": "\n      (\"issue_recovery_actions\".\"evidence\"->'workspaceRestoreRecovery'->>'schema' = 'pilibala.workspace-restore-recovery.v1'\n        or \"issue_recovery_actions\".\"cause\" in ('native_workspace_sync_out_unrecoverable', 'native_workspace_sync_out_retry_exhausted'))\n      and (\"issue_recovery_actions\".\"evidence\"->'executionReconciliation' is null\n        or \"issue_recovery_actions\".\"evidence\"#>>'{workspaceRecovery,status}' = 'recovered')\n    ",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -44769,6 +45287,12 @@
         "controller_pid": {
           "name": "controller_pid",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "controller_host_hash": {
+          "name": "controller_host_hash",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -50083,6 +50607,19 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "lifecycle": {
+          "name": "lifecycle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'standing'"
+        },
+        "bound_issue_id": {
+          "name": "bound_issue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -57499,7 +58036,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'paperclip_vault'"
+          "default": "'pilibala_vault'"
         },
         "external_credential": {
           "name": "external_credential",
@@ -57776,11 +58313,11 @@
         },
         "tool_connections_credential_source_check": {
           "name": "tool_connections_credential_source_check",
-          "value": "\"tool_connections\".\"credential_source\" in ('paperclip_vault', 'vercel_connect')"
+          "value": "\"tool_connections\".\"credential_source\" in ('pilibala_vault', 'vercel_connect')"
         },
         "tool_connections_credential_source_one_of_check": {
           "name": "tool_connections_credential_source_one_of_check",
-          "value": "(\n      (\"tool_connections\".\"credential_source\" = 'paperclip_vault' and \"tool_connections\".\"external_credential\" is null)\n      or\n      (\"tool_connections\".\"credential_source\" = 'vercel_connect' and \"tool_connections\".\"external_credential\" is not null and jsonb_array_length(\"tool_connections\".\"credential_refs\") = 0 and jsonb_array_length(\"tool_connections\".\"credential_secret_refs\") = 0)\n    )"
+          "value": "(\n      (\"tool_connections\".\"credential_source\" = 'pilibala_vault' and \"tool_connections\".\"external_credential\" is null)\n      or\n      (\"tool_connections\".\"credential_source\" = 'vercel_connect' and \"tool_connections\".\"external_credential\" is not null and jsonb_array_length(\"tool_connections\".\"credential_refs\") = 0 and jsonb_array_length(\"tool_connections\".\"credential_secret_refs\") = 0)\n    )"
         },
         "tool_connections_credential_policy_check": {
           "name": "tool_connections_credential_policy_check",
@@ -61949,7 +62486,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'paperclip_managed'"
+          "default": "'pilibala_managed'"
         },
         "provider_config_id": {
           "name": "provider_config_id",
@@ -64331,6 +64868,139 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.mcp_oauth_client_changes": {
+      "name": "mcp_oauth_client_changes",
+      "schema": "",
+      "columns": {
+        "client_id": {
+          "name": "client_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operation": {
+          "name": "operation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "mcp_client_changes_revision_idx": {
+          "name": "mcp_client_changes_revision_idx",
+          "columns": [
+            {
+              "expression": "revision",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "client_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "mcp_client_change_revision": {
+          "name": "mcp_client_change_revision",
+          "value": "\"mcp_oauth_client_changes\".\"revision\" >= 1"
+        },
+        "mcp_client_change_operation": {
+          "name": "mcp_client_change_operation",
+          "value": "\"mcp_oauth_client_changes\".\"operation\" IN ('upsert','delete')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.mcp_oauth_client_mirror_state": {
+      "name": "mcp_oauth_client_mirror_state",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "remote_responsibility": {
+          "name": "remote_responsibility",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "device_cutover_stack_id": {
+          "name": "device_cutover_stack_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "device_cutover_at": {
+          "name": "device_cutover_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "receipt": {
+          "name": "receipt",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "mcp_client_mirror_singleton": {
+          "name": "mcp_client_mirror_singleton",
+          "value": "\"mcp_oauth_client_mirror_state\".\"id\" = 'public'"
+        },
+        "mcp_client_mirror_revision": {
+          "name": "mcp_client_mirror_revision",
+          "value": "\"mcp_oauth_client_mirror_state\".\"revision\" >= 0"
+        },
+        "mcp_device_cutover_identity": {
+          "name": "mcp_device_cutover_identity",
+          "value": "(\"mcp_oauth_client_mirror_state\".\"device_cutover_at\" IS NULL AND \"mcp_oauth_client_mirror_state\".\"device_cutover_stack_id\" IS NULL) OR (\"mcp_oauth_client_mirror_state\".\"device_cutover_at\" IS NOT NULL AND \"mcp_oauth_client_mirror_state\".\"device_cutover_stack_id\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.mcp_oauth_clients": {
       "name": "mcp_oauth_clients",
       "schema": "",
@@ -64398,6 +65068,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "ingress_owner": {
+          "name": "ingress_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'tenant'"
         },
         "device_code_hash": {
           "name": "device_code_hash",
@@ -64554,7 +65231,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "mcp_device_ingress_owner": {
+          "name": "mcp_device_ingress_owner",
+          "value": "\"mcp_oauth_device_requests\".\"ingress_owner\" IN ('tenant','cloud')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.mcp_oauth_grants": {
@@ -64614,6 +65296,19 @@
         "revoked_at": {
           "name": "revoked_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revocation_revision": {
+          "name": "revocation_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "revocation_index_receipt": {
+          "name": "revocation_index_receipt",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -64947,6 +65642,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "revocation_revision": {
+          "name": "revocation_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "expires_at": {
           "name": "expires_at",
           "type": "timestamp with time zone",
@@ -64982,6 +65684,33 @@
           "columns": [
             {
               "expression": "grant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "mcp_oauth_tokens_revocation_revision_idx": {
+          "name": "mcp_oauth_tokens_revocation_revision_idx",
+          "columns": [
+            {
+              "expression": "grant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "revocation_revision",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
