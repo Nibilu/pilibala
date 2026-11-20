@@ -65,7 +65,12 @@ export function managedProviderRouting(
     const gatewayKeyName = "PILIBALA_PI_GATEWAY_KEY";
     if (route.auth !== "none") env[gatewayKeyName] = credential;
     const routingModels = Array.isArray(route.models) ? route.models : [];
-    const modelIds = [...new Set([...routingModels, ...(model ? [model] : [])])];
+    const modelIds = [
+      ...new Set([
+        ...routingModels.map((entry) => entry.id),
+        ...(model ? [model] : []),
+      ]),
+    ];
     env.PILIBALA_PI_PROVIDERS = JSON.stringify({
       pilibala: {
         baseUrl,
