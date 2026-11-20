@@ -51,7 +51,9 @@ export async function detectModel(
  * from raw YAML content. Uses simple regex parsing to avoid a YAML dependency.
  */
 export function parseModelFromConfig(content: string): DetectedModel | null {
-  const lines = content.split("\n");
+  // A UTF-8 BOM (hand-edited files) would otherwise hide the `model:` header
+  // from the top-level match below and blank the whole detection.
+  const lines = content.replace(/^\uFEFF/, "").split("\n");
   let model = "";
   let provider = "";
   let baseUrl = "";
@@ -59,6 +61,10 @@ export function parseModelFromConfig(content: string): DetectedModel | null {
   let apiMode = "";
   let inModelSection = false;
   let modelSectionIndent = 0;
+  // Indent of the first accepted key inside the section. Deeper-indented keys
+  // belong to nested maps (e.g. a provider entry's own base_url) and must not
+  // overwrite the section-level values.
+  let modelKeyIndent: number | null = null;
 
   for (const line of lines) {
     const trimmed = line.trimEnd();
@@ -68,6 +74,7 @@ export function parseModelFromConfig(content: string): DetectedModel | null {
     if (/^model:\s*$/.test(trimmed) && indent === 0) {
       inModelSection = true;
       modelSectionIndent = 0;
+      modelKeyIndent = null;
       continue;
     }
 
@@ -79,6 +86,8 @@ export function parseModelFromConfig(content: string): DetectedModel | null {
     if (inModelSection) {
       const match = trimmed.match(/^\s*(\w+)\s*:\s*(.+)$/);
       if (match) {
+        if (modelKeyIndent === null) modelKeyIndent = indent;
+        if (indent !== modelKeyIndent) continue;
         const key = match[1];
         const val = match[2].trim().replace(/#.*$/, "").trim().replace(/^['"]|['"]$/g, "");
         if (key === "default") model = val;

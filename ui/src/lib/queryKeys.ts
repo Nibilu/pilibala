@@ -740,5 +740,8 @@ export const queryKeys = {
     all: ["adapters"] as const,
     availability: (companyId: string | null, environmentId?: string | null) =>
       ["adapters", "availability", companyId, environmentId ?? null] as const,
+    /** Local CLI deployment probe (new-agent grid, AMB-311 plan §3). */
+    cliAvailability: (companyId: string | null) =>
+      ["adapters", "cli-availability", companyId] as const,
   },
 };

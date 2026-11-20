@@ -26,6 +26,7 @@ import {
   CLAUDE_SETUP_TOKEN_COMMAND,
   parseSetupTokenPrompt,
   parseSetupTokenCredential,
+  detectClaudeModel,
 } from "@pilibalaai/adapter-claude-local/server";
 import {
   agentConfigurationDoc as claudeAgentConfigurationDoc,
@@ -41,6 +42,7 @@ import {
   getConfigSchema as getCodexConfigSchema,
   CODEX_DEVICE_LOGIN_COMMAND,
   parseDeviceLoginPrompt,
+  detectCodexModel,
 } from "@pilibalaai/adapter-codex-local/server";
 import {
   agentConfigurationDoc as codexAgentConfigurationDoc,
@@ -84,6 +86,7 @@ import {
   sessionCodec as grokSessionCodec,
   GROK_DEVICE_LOGIN_COMMAND,
   parseGrokDeviceLoginPrompt,
+  detectGrokModel,
 } from "@pilibalaai/adapter-grok-local/server";
 import {
   agentConfigurationDoc as grokAgentConfigurationDoc,
@@ -133,6 +136,7 @@ import {
   testEnvironment as piTestEnvironment,
   sessionCodec as piSessionCodec,
   listPiModels,
+  detectPiModel,
 } from "@pilibalaai/adapter-pi-local/server";
 import { agentConfigurationDoc as piAgentConfigurationDoc } from "@pilibalaai/adapter-pi-local";
 import { BUILTIN_ADAPTER_TYPES } from "./builtin-adapter-types.js";
@@ -315,6 +319,7 @@ const claudeLocalAdapter: ServerAdapterModule = {
   getConfigSchema: getClaudeConfigSchema,
   getQuotaWindows: claudeGetQuotaWindows,
   loginCapability: claudeLoginCapability,
+  detectModel: detectClaudeModel,
 };
 
 const acpxLocalAdapter: ServerAdapterModule = {
@@ -390,6 +395,7 @@ const codexLocalAdapter: ServerAdapterModule = {
   getConfigSchema: getCodexConfigSchema,
   getQuotaWindows: codexGetQuotaWindows,
   loginCapability: codexLoginCapability,
+  detectModel: detectCodexModel,
 };
 
 const pilibalaRunnerAdapter: ServerAdapterModule = {
@@ -916,6 +922,7 @@ const grokLocalAdapter: ServerAdapterModule = {
   }),
   agentConfigurationDoc: grokAgentConfigurationDoc,
   loginCapability: grokLoginCapability,
+  detectModel: detectGrokModel,
 };
 
 const kimiLocalAdapter: ServerAdapterModule = {
@@ -1008,6 +1015,7 @@ const piLocalAdapter: ServerAdapterModule = {
   supportsToolRefreshOnResume: true,
   models: [],
   listModels: listPiModels,
+  detectModel: detectPiModel,
   supportsLocalAgentJwt: true,
   supportsInstructionsBundle: true,
   instructionsPathKey: "instructionsFilePath",
@@ -1296,6 +1304,7 @@ export async function detectAdapterModel(
   hasApiKey?: boolean;
   baseUrl?: string;
   apiMode?: string;
+  deployed?: boolean;
 } | null> {
   const adapter = findActiveServerAdapter(type);
   if (!adapter?.detectModel) return null;
@@ -1305,6 +1314,7 @@ export async function detectAdapterModel(
     model: detected.model,
     provider: detected.provider,
     source: detected.source,
+    ...(detected.deployed !== undefined ? { deployed: detected.deployed } : {}),
     ...(detected.candidates?.length ? { candidates: detected.candidates } : {}),
     ...(detected.hasApiKey !== undefined ? { hasApiKey: detected.hasApiKey } : {}),
     ...(detected.baseUrl ? { baseUrl: detected.baseUrl } : {}),

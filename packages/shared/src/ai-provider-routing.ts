@@ -114,7 +114,9 @@ export function isAiRoutingCompatible(
     ].includes(harness);
   if (route.protocol === "responses") return harness === "codex_local";
   if (route.protocol === "messages") return harness === "claude_local";
-  return ["opencode_local", "hermes_local"].includes(harness);
+  // Generic gateway/local (chat_completions + baseUrl): pi consumes these via
+  // the managedProviderRouting providers projection (PILIBALA_PI_PROVIDERS).
+  return ["opencode_local", "hermes_local", "pi_local"].includes(harness);
 }
 export function aiRoutingBaseUrl(
   route: AiProviderRouting,

@@ -59,3 +59,5 @@ export {
   resetPiModelsCacheForTests,
 } from "./models.js";
 export { parsePiJsonl, isPiUnknownSessionError } from "./parse.js";
+export { detectPiModel } from "./detect-model.js";
+export { resolvePiCliCommand } from "./pi-command.js";

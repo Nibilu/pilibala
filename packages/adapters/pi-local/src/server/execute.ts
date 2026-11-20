@@ -59,6 +59,7 @@ import { shellQuote } from "@pilibalaai/adapter-utils/ssh";
 import { isPiUnknownSessionError, parsePiJsonl, createPiJsonlParser } from "./parse.js";
 import { createPiStdoutCompactor, resolvePiStdoutLogMode } from "./stdout-compaction.js";
 import { ensurePiModelConfiguredAndAvailable } from "./models.js";
+import { resolvePiCliCommand } from "./pi-command.js";
 import { preparePiRuntimeConfig } from "./runtime-config.js";
 import { preparePiOpenRouterExtension } from "./openrouter-extension.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
@@ -241,7 +242,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       : DEFAULT_PILIBALA_AGENT_PROMPT_TEMPLATE,
   );
   const hasCustomPromptTemplate = asString(config.promptTemplate, "").trim().length > 0;
-  const command = asString(config.command, "pi");
+  const command = resolvePiCliCommand(asString(config.command, ""));
   const model = asString(config.model, "").trim();
   const thinking = asString(config.thinking, "").trim();
   const stdoutLogMode = resolvePiStdoutLogMode(config);

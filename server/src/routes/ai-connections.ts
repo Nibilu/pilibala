@@ -281,6 +281,21 @@ export function aiConnectionRoutes(db: Db, options: Parameters<typeof supportsLo
       }));
     },
   );
+  router.post(
+    "/companies/:companyId/ai-connections/:connectionId/models/refresh", managementGuard("connections:configure", "POST /companies/:companyId/ai-connections/:connectionId/models/refresh", { personal: true }),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      assertBoardOrAgent(req);
+      assertCompanyAccess(req, companyId);
+      const connectionId = z.string().uuid().safeParse(req.params.connectionId);
+      if (!connectionId.success) throw unprocessable("Invalid connection ID");
+      const actor = getActorInfo(req);
+      res.setHeader("Cache-Control", "no-store");
+      res.json(await service.refreshConnectionModels(companyId, responsibleUserForAiRequest(req)!, connectionId.data, {
+        actorType: actor.actorType, actorId: actor.actorId, heartbeatRunId: actor.runId,
+      }));
+    },
+  );
   router.get(
     "/companies/:companyId/ai-connections/:connectionId/active-runs", managementGuard("connections:read", "GET /companies/:companyId/ai-connections/:connectionId/active-runs", { personal: true }),
     async (req, res) => {

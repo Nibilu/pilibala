@@ -50,6 +50,7 @@ import { logActivity } from "./activity-log.js";
 import { secretService } from "./secrets.js";
 import { probeAiConnectionUsage } from "./ai-connection-usage.js";
 import { probeAiAccountIdentity } from "./ai-account-identity.js";
+import { discoverGatewayModels } from "./ai-gateway-models.js";
 
 /** Same human audience displayed by the existing Connections identity controls. */
 function canUseCredential(
@@ -1268,5 +1269,52 @@ export function aiConnectionService(db: Db) {
       return [{ ...row, summary }];
     });
   }
-  return { list, selectDecision, selectFastResponse, selectImageGeneration, selectPromptInjectionPrevention, quotaAccounts, subscriptionAccounts: (companyId: string, userId: string) => quotaAccounts(companyId, userId, true), refreshQuotaCredential, select, credential, runtimeCredential, probeUsage, accountIdentity, save, setDefault, membership, markAuthenticationFailed };
+  /**
+   * Re-run gateway/local model discovery against the connection's stored
+   * routing.baseUrl and merge the live catalog into routing.models. Reuses
+   * the creation-time discovery (discoverGatewayModels) so the model list a
+   * connection advertises never diverges from what its base URL serves.
+   * Existing labels survive; ids no longer served by the endpoint are dropped.
+   */
+  async function refreshConnectionModels(
+    companyId: string,
+    userId: string,
+    connectionId: string,
+    audit: { actorType: "user" | "agent" | "system"; actorId: string; heartbeatRunId?: string | null },
+  ) {
+    if (!(await membership(companyId, userId))) throw forbidden("Not an active company member");
+    const visible = (await list(companyId, userId)).find((account) => account.id === connectionId);
+    if (!visible) throw notFound("AI connection not found");
+    const row = (await rows(companyId)).find((candidate) => candidate.connection.id === connectionId);
+    if (!row) throw notFound("AI connection not found");
+    const metadata = aiConnectionMetadataSchema.safeParse(row.connection.config.ai);
+    const routing = metadata.success ? metadata.data.routing : undefined;
+    if (!routing || (routing.kind !== "gateway" && routing.kind !== "local") || !routing.baseUrl)
+      throw unprocessable("Only gateway or local connections with a base URL support model discovery");
+    const apiKey = await credential(row, 0, { ...audit, responsibleUserId: userId });
+    const discovery = await discoverGatewayModels(routing.baseUrl, apiKey, metadata.data!.provider);
+    if (!discovery.models.length)
+      throw unprocessable(discovery.reason ? `Model discovery failed: ${discovery.reason}` : "Model discovery found no models");
+    const served = new Set(discovery.models);
+    const merged = [
+      ...routing.models.filter((model) => served.has(model.id)),
+      ...discovery.models.filter((id) => !routing.models.some((model) => model.id === id)).map((id) => ({ id })),
+    ].slice(0, 200);
+    const nextRouting = { ...routing, models: merged };
+    await db
+      .update(toolConnections)
+      .set({ config: { ...row.connection.config, ai: { ...metadata.data!, routing: nextRouting } }, updatedAt: new Date() })
+      .where(eq(toolConnections.id, row.connection.id));
+    await logActivity(db, {
+      companyId,
+      actorType: audit.actorType,
+      actorId: audit.actorId,
+      action: "ai_connection.models_refreshed",
+      entityType: "tool_connection",
+      entityId: row.connection.id,
+      details: { provider: metadata.data!.provider, discovered: discovery.models.length, merged: merged.length },
+    });
+    return { models: nextRouting.models, discovered: discovery.models.length, reason: discovery.reason };
+  }
+  return { list, selectDecision, selectFastResponse, selectImageGeneration, selectPromptInjectionPrevention, quotaAccounts, subscriptionAccounts: (companyId: string, userId: string) => quotaAccounts(companyId, userId, true), refreshQuotaCredential, select, credential, runtimeCredential, probeUsage, accountIdentity, save, setDefault, membership, markAuthenticationFailed, refreshConnectionModels };
 }

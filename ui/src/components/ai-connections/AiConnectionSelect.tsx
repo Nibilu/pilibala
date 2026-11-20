@@ -157,7 +157,7 @@ export function AiConnectionSelect({
               <ConnectionLabel connection={c} label={`${aiConnectionDisplayLabel(c)}${c.status !== "connected" ? " · Reconnect" : ""}`} wrap />
             </SelectItem>
           ))}
-          {(canUseDefault || value?.mode === "responsible_user") && (
+          {(personal && canUseDefault) && (
             <SelectItem value="responsible_user" disabled={!canUseDefault}>
               <span className="flex size-5 shrink-0 items-center justify-center"><UserRound className="size-4" /></span>
               Responsible user’s default
@@ -165,7 +165,7 @@ export function AiConnectionSelect({
           )}
           <SelectItem value="connect">
             <span className="flex size-5 shrink-0 items-center justify-center"><Plus className="size-4" /></span>
-            Connect an account…
+            Create a connection…
           </SelectItem>
         </SelectContent>
       </Select>

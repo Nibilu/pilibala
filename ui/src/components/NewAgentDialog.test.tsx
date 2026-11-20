@@ -20,6 +20,8 @@ const dotApi = vi.hoisted(() => ({ create: vi.fn(), connection: vi.fn(), pair: v
 vi.mock("@/api/dotInvitations", () => ({ dotInvitationsApi: dotApi }));
 const state = vi.hoisted(() => ({
   adapters: [] as object[],
+  cliAvailability: [] as object[],
+  cliAvailabilityCalls: null as boolean[] | null,
   navigate: vi.fn(),
   close: vi.fn(),
 }));
@@ -28,7 +30,13 @@ vi.mock("../context/DialogContext", () => ({
   useDialog: () => ({ newAgentOpen: true, closeNewAgent: state.close }),
 }));
 vi.mock("@/api/adapters", () => ({
-  adaptersApi: { list: async () => state.adapters },
+  adaptersApi: {
+    list: async () => state.adapters,
+    availability: async (_companyId: string, options?: { refresh?: boolean }) => {
+      state.cliAvailabilityCalls?.push(Boolean(options?.refresh));
+      return state.cliAvailability;
+    },
+  },
 }));
 vi.mock("./onboarding/PillGuy", () => ({ PillGuy: () => null }));
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -191,6 +199,46 @@ it("can save the name when the process adapter is disabled", async () => {
   expect(agents.create.mock.calls[0][1]).toMatchObject({ adapterType: "codex_local", metadata: { setupAdapterPending: true } });
   expect(document.querySelector('input[name="new-agent-adapter"]:checked')).toBeNull();
 });
+it("flags undeployed harnesses with Not Found, blocks the CTA, and re-checks on demand", async () => {
+  const calls: boolean[] = [];
+  state.cliAvailabilityCalls = calls;
+  state.cliAvailability = [
+    { type: "codex_local", deployed: true, version: "codex-cli 0.163.0" },
+    { type: "claude_local", deployed: false },
+  ];
+  await act(async () =>
+    cache.setQueryData(queryKeys.adapters.availability("company-1", null), [
+      { type: "codex_local", loaded: true },
+      { type: "claude_local", loaded: true },
+    ]),
+  );
+  await name();
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+  const claudeCard = document.querySelector('label:has(input[value="claude_local"])')?.closest("div");
+  const codexCard = document.querySelector('label:has(input[value="codex_local"])')?.closest("div");
+  expect(claudeCard?.textContent).toContain("Not Found");
+  expect(codexCard?.textContent).not.toContain("Not Found");
+  // The Not Found badge expands install guidance without selecting the harness.
+  expect(document.body.textContent).not.toContain("was not found in this");
+  await act(async () => [...(claudeCard as HTMLElement).querySelectorAll("button")].find((b) => b.textContent === "Not Found")!.click());
+  expect(document.body.textContent).toContain("was not found in this");
+  expect(document.querySelector('input[name="new-agent-adapter"]:checked')).toBeNull();
+  const probeCalls = calls.length;
+  await click("Check again");
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+  expect(calls.length).toBeGreaterThan(probeCalls);
+  expect(calls[calls.length - 1]).toBe(true);
+  // Selecting the undeployed harness blocks the CTA and explains why.
+  await act(async () => document.querySelector<HTMLInputElement>('input[value="claude_local"]')!.click());
+  const blocked = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Configure agent");
+  expect(blocked?.disabled).toBe(true);
+  expect(document.body.textContent).toContain("not installed on this machine");
+  // A deployed harness still selects and proceeds normally.
+  await act(async () => document.querySelector<HTMLInputElement>('input[value="codex_local"]')!.click());
+  const enabled = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Configure agent");
+  expect(enabled?.disabled).toBe(false);
+});
+
 it("keeps the server-assigned name when a duplicate is numbered", async () => {
   agents.create.mockImplementationOnce(async (_company, input) => ({ ...input, id: input.setupId, name: "Ada & Co 2" }));
   await name();

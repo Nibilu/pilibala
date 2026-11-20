@@ -289,6 +289,7 @@ import {
 import { buildOnboardingFirstAgentInstructionsBundle } from "../services/onboarding-first-task-assets.js";
 import { getTelemetryClient } from "../telemetry.js";
 import { assertEnvironmentSelectionForCompany } from "./environment-selection.js";
+import { readAdapterAvailability } from "../services/adapter-availability.js";
 import { recoveryService } from "../services/recovery/service.js";
 import { resolveCoreTrustPreset } from "../services/trust-preset-resolver.js";
 import { readObject } from "../lib/objects.js";
@@ -3196,6 +3197,20 @@ export function agentRoutes(
     res.json(detected);
   });
 
+  // Local deployment probe for the new-agent harness grid (AMB-311 plan §3):
+  // which CLI harnesses can this server actually spawn? Read-only, cached,
+  // never includes credential material. `?refresh=1` bypasses the cache.
+  router.get("/companies/:companyId/adapters/availability", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    const rows = await readAdapterAvailability({
+      refresh: req.query.refresh === "1" || req.query.refresh === "true",
+    });
+    res.setHeader("Cache-Control", "no-store");
+    res.json(rows);
+  });
+
   // Provider catalog for adapters that route across multiple model providers.
   // Returns [] for adapters without a catalog so the UI falls back to its
   // static provider list. Credential values are never included.
@@ -5874,7 +5889,14 @@ export function agentRoutes(
         || (nextAiBinding.mode !== "router" && ["model", "provider", "acpxAgent", "engine"].some(
           key => aiConfig[key] !== existing.adapterConfig[key],
         ));
-      if (nextAiBinding.mode !== "router" && !isAiConnectionCompatible(nextAiBinding, requestedAdapterType, aiConfig.model, aiConfig.provider, aiConfig.acpxAgent)) throw unprocessable("Select an AI connection compatible with the new harness and model");
+      // Bindings backed by a connection (shared/delegated ids or the
+      // responsible user's default) are judged against the resolved
+      // connection's routing metadata by aiConnectionService.select() inside
+      // validateManagedAgentBinding below. The binding-only check here cannot
+      // see that metadata and misjudges gateway models whose ids use the
+      // upstream provider namespace (e.g. "z-ai/..." on an openai gateway).
+      const bindingBackedByConnection = nextAiBinding.mode === "responsible_user" || "connectionId" in nextAiBinding;
+      if (nextAiBinding.mode !== "router" && !bindingBackedByConnection && !isAiConnectionCompatible(nextAiBinding, requestedAdapterType, aiConfig.model, aiConfig.provider, aiConfig.acpxAgent)) throw unprocessable("Select an AI connection compatible with the new harness and model");
       const copilotConfigurationChanged = requestedAdapterType === "pilibala_runner" && aiConfig.provider === "acpx" && aiConfig.acpxAgent === "copilot"
         && (touchesAdapterConfiguration || Object.prototype.hasOwnProperty.call(patchData, "defaultEnvironmentId"));
       if (runtimeSettings || changed || runtimeSelectionChanged || copilotConfigurationChanged) {

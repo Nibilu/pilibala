@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { AiManagedConnectionSummary } from "@pilibalaai/shared";
-import { resolveConnectionModelLinkage } from "./connection-model-linkage";
+import { isAiConnectionCompatible, type AiConnectionBinding, type AiManagedConnectionSummary } from "@pilibalaai/shared";
+import { aiConnectionCompatRequirement, resolveConnectionModelLinkage } from "./connection-model-linkage";
 
 function connection(overrides: Partial<AiManagedConnectionSummary> & Pick<AiManagedConnectionSummary, "id" | "grantId" | "name">): AiManagedConnectionSummary {
   return {
@@ -170,6 +170,29 @@ describe("resolveConnectionModelLinkage", () => {
       currentUserId: "user-1",
     });
     expect(result?.binding).toMatchObject({ connectionId: "magaai-chat", mode: "shared" });
+  });
+
+  it("keeps a gateway connection compatible for pi_local where the bare binding is not", () => {
+    // The wizard's red-banner check judged the BARE binding: without routing it
+    // fell into the fixed-binding pi branch whose "openai/" model-prefix rule is
+    // meant for native provider credentials — gateway connections enumerate
+    // bare ids and were falsely marked incompatible.
+    const sharedGateway = connection({
+      id: "gw-conn",
+      grantId: "gw-grant",
+      name: "全员 nvidia chat_completion",
+      routing: { kind: "gateway", protocol: "chat", auth: "bearer", baseUrl: "https://integrate.api.nvidia.com/v1", models: [{ id: "01-ai/yi-large" }] },
+    });
+    const binding = {
+      provider: "openai" as const,
+      method: "api_key" as const,
+      mode: "shared" as const,
+      connectionId: "gw-conn",
+      grantId: "gw-grant",
+    } as AiConnectionBinding;
+    const requirement = aiConnectionCompatRequirement([sharedGateway], binding, "user-1");
+    expect(isAiConnectionCompatible(requirement, "pi_local", "01-ai/yi-large")).toBe(true);
+    expect(isAiConnectionCompatible(binding, "pi_local", "01-ai/yi-large")).toBe(false);
   });
 
   it("delegates personal connections with explicit ids instead of the default", () => {

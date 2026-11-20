@@ -5,6 +5,7 @@ import {
   aiRoutingModel,
   createAiConnectionSchema,
   isAiConnectionCompatible,
+  isAiRoutingCompatible,
 } from "@pilibalaai/shared";
 import { managedProviderRouting } from "../services/ai-provider-routing.js";
 
@@ -20,7 +21,31 @@ describe("provider routing", () => {
     const projected = managedProviderRouting(routing, "pi_local", "selected-pi-key", "anthropic/model");
     expect(projected).toMatchObject({ config: { model: "openrouter/anthropic/model" }, env: { OPENROUTER_API_KEY: "selected-pi-key" } });
     expect(projected.env).not.toHaveProperty("OPENCODE_CONFIG_CONTENT");
-    expect(isAiConnectionCompatible({ provider: "openai", method: "api_key", routing: aiProviderRoutingSchema.parse({ kind: "gateway", protocol: "chat", baseUrl: "https://gateway.example/v1" }) }, "pi_local", "custom/model")).toBe(false);
+    expect(isAiConnectionCompatible({ provider: "openai", method: "api_key", routing: aiProviderRoutingSchema.parse({ kind: "gateway", protocol: "chat", baseUrl: "https://gateway.example/v1" }) }, "pi_local", "custom/model")).toBe(true);
+  });
+  it("projects a managed gateway connection to Pi via PILIBALA_PI_PROVIDERS", () => {
+    const routing = aiProviderRoutingSchema.parse({ kind: "gateway", protocol: "chat", baseUrl: "https://gateway.example/v1", auth: "bearer", models: [{ id: "model-a" }, { id: "model-b" }] });
+    expect(isAiRoutingCompatible(routing, "pi_local")).toBe(true);
+    const projected = managedProviderRouting(routing, "pi_local", "gw-secret-key", "model-a");
+    expect(projected.config).toMatchObject({ model: "pilibala/model-a" });
+    expect(projected.env.PILIBALA_PI_GATEWAY_KEY).toBe("gw-secret-key");
+    const providers = JSON.parse(projected.env.PILIBALA_PI_PROVIDERS!);
+    const provider = providers.pilibala;
+    expect(provider.baseUrl).toBe("https://gateway.example/v1");
+    expect(provider.api).toBe("openai-completions");
+    expect(provider.apiKey).toBe("{env:PILIBALA_PI_GATEWAY_KEY}");
+    expect(provider.models.map((m: { id: string }) => m.id)).toEqual(["model-a", "model-b"]);
+    // the projected providers config carries only the {env:VAR} placeholder —
+    // the literal credential travels in its own env var, never inline.
+    expect(projected.env.PILIBALA_PI_PROVIDERS).not.toContain("gw-secret-key");
+  });
+  it("projects an auth-less gateway connection to Pi without any key material", () => {
+    const routing = aiProviderRoutingSchema.parse({ kind: "gateway", protocol: "chat", baseUrl: "http://127.0.0.1:8123/v1", auth: "none", models: [{ id: "model-x" }] });
+    const projected = managedProviderRouting(routing, "pi_local", "", "model-x");
+    const providers = JSON.parse(projected.env.PILIBALA_PI_PROVIDERS!);
+    expect(providers.pilibala.apiKey).toBeUndefined();
+    expect(projected.env).not.toHaveProperty("PILIBALA_PI_GATEWAY_KEY");
+    expect(projected.config).toMatchObject({ model: "pilibala/model-x" });
   });
   it.each(["openai", "anthropic", "google", "openrouter"] as const)("accepts Pi %s API keys only for matching models", provider => {
     expect(isAiConnectionCompatible({ provider, method: "api_key" }, "pilibala_runner", `${provider}/model`, "acpx", "pi")).toBe(true);

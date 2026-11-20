@@ -61,7 +61,7 @@ import {
   storeOrganizationApiKey,
 } from "@/lib/provider-credential";
 import { defaultCreateValues } from "../agent-config-defaults";
-import { ModelDropdown } from "../AgentConfigForm";
+import { ProviderModelLinkageConnection, ProviderModelLinkageModelSelect } from "../ai-connections/ProviderModelLinkageSelect";
 import { Field, ToggleField } from "../agent-config-primitives";
 import { SecretPicker } from "../environment-variables-editor/SecretPicker";
 import { Button } from "../ui/button";
@@ -453,6 +453,20 @@ function Setup({
   useEffect(() => {
     if (requestAccountModels) void refreshAccountModels();
   }, [requestAccountModels, accountModelScope, refreshAccountModels]);
+  // Harness-config model detection (AMB-311 P2b): for local CLI harnesses with a
+  // detectModel registry entry, surface the harness's own default config in the
+  // model dropdown ("Detect from config" / promoted adopt row) while no
+  // connection is selected. Connection-selected model lists come from the
+  // connection routing instead, so detection is gated off there.
+  const harnessDetection = useQuery({
+    queryKey: queryKeys.agents.detectModel(companyId, brandType),
+    queryFn: () => agentsApi.detectModel(companyId!, brandType),
+    enabled: Boolean(
+      companyId && brandType && showModel && !connectionModels
+      && (brandType === "codex_local" || brandType === "claude_local"
+        || brandType === "grok_local" || brandType === "pi_local"),
+    ),
+  });
   const environment = envs.data?.find((env) => env.id === environmentId);
   const setupEnvironmentKey = JSON.stringify([companyId, environmentId, environment?.config]);
   const setupEnvironmentRef = useRef("");
@@ -514,6 +528,20 @@ function Setup({
                 version: "latest" as const,
               }
             : null));
+  // Credentials auto-generated for AI connections are internal plumbing
+  // (key === name === "ai-<uuid>"); they are managed through the connection,
+  // not hand-picked, so hide them from the manual credential picker unless
+  // the current binding already points at one (AMB-311).
+  const manualOrgSecrets = useMemo(() => {
+    const boundSecretId =
+      selectedBinding && typeof selectedBinding === "object" && selectedBinding.type === "secret_ref"
+        ? selectedBinding.secretId
+        : "";
+    return (companySecrets.data ?? []).filter(
+      (secret) => !/^ai-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(secret.key)
+        || secret.id === boundSecretId,
+    );
+  }, [companySecrets.data, selectedBinding]);
   const usingKimiApi =
     adapterType === "kimi_local" && Boolean(apiKey.trim() || selectedBinding);
   const cloud = Boolean(useCloudInstance());
@@ -668,7 +696,7 @@ function Setup({
   function preparedConfig(nextConnection = connection, setupRunner?: AgentRunner) {
     if (nativeCursorCloud && !model.trim()) throw new Error("Enter the exact Cursor Cloud model ID.");
     if (isKimi && !model.trim()) throw new Error("Enter the exact Kimi model ID.");
-    if (isKimi && !apiKey.trim() && !selectedBinding) throw new Error("Enter KIMI_API_KEY or select an organization secret.");
+    if (isKimi && !apiKey.trim() && !selectedBinding) throw new Error("Enter KIMI_API_KEY or select a company secret.");
     if (brandType === "antigravity_runtime" && (!model.trim() || model !== model.trim() || /\s/.test(model) || ["auto", "default"].includes(model.toLowerCase())))
       throw new Error("Choose or enter an exact Google Antigravity model ID.");
     if (brandType === "copilot_runtime" && !models.data?.some(candidate => candidate.id === model))
@@ -689,7 +717,7 @@ function Setup({
       throw new Error(
         adapterType === "cursor_cloud"
           ? "Enter a Cursor API key."
-          : `Enter ${envKey} or select an organization secret.`,
+          : `Enter ${envKey} or select a company secret.`,
       );
     if (adapterType === "hermes_gateway") {
       try {
@@ -1309,33 +1337,40 @@ function Setup({
                             checked={allowUnmeteredProvider} onChange={value => { setAllowUnmeteredProvider(value); resetTest(); }} />
                         </>}
                         {!connectionAdapter && aiProviderForAdapter(brandType) && (
-                          brandType === "hermes_local" ? (
-                            // Hermes default path needs no managed connection.
-                            // The Connections flow (account binding, shared
-                            // credentials, gateway/local endpoints) stays
-                            // reachable but collapsed under Advanced.
-                            <details className="space-y-3">
-                              <summary className="cursor-pointer text-sm text-muted-foreground">
-                                Advanced: Connect a provider account
-                              </summary>
-                              {detectedHermesModel.data && (
-                                <p className="text-xs text-muted-foreground">
-                                  Hermes default: {detectedHermesModel.data.model}
-                                  {detectedHermesProvider ? ` · provider ${detectedHermesProvider}` : ""}
-                                  {detectedHermesModel.data.hasApiKey ? " · credential configured" : " · no credential in ~/.hermes/.env"}
-                                </p>
-                              )}
-                              <AiConnectionField companyId={companyId} agentName={name} adapterType={brandType} model={model} environmentId={environmentId ?? undefined} value={aiBinding}
-                                initialWizardProvider={hermesWizardPreset?.provider}
-                                initialWizardProtocol={hermesWizardPreset?.protocol}
-                                initialWizardBaseUrl={hermesWizardPreset?.baseUrl}
-                                onChange={binding => { binding.mode !== "router" && setRuntimeAiBinding(binding); resetTest(); }} />
-                            </details>
-                          ) : (
-                            <AiConnectionField companyId={companyId} agentName={name} adapterType={brandType} model={model} environmentId={environmentId ?? undefined} value={aiBinding}
-                              onChange={binding => { binding.mode !== "router" && setRuntimeAiBinding(binding); resetTest();
-                                if (accountCatalogAvailable && hashKey([aiBinding ?? null]) === hashKey([binding ?? null])) void refreshAccountModels(); }} />
-                          )
+                          // Hermes default path needs no managed connection.
+                          // The Connections flow (account binding, shared
+                          // credentials, gateway/local endpoints) stays
+                          // reachable but collapsed under Advanced. The shared
+                          // field also explains when no managed connection is
+                          // compatible with this harness (AMB-311).
+                          <ProviderModelLinkageConnection
+                            companyId={companyId}
+                            agentName={name}
+                            harness={brandType}
+                            environmentId={environmentId ?? undefined}
+                            binding={aiBinding}
+                            model={model}
+                            advancedConnection={brandType === "hermes_local"}
+                            wizardPresets={brandType === "hermes_local" ? {
+                              provider: hermesWizardPreset?.provider,
+                              protocol: hermesWizardPreset?.protocol,
+                              baseUrl: hermesWizardPreset?.baseUrl,
+                            } : undefined}
+                            connectionDetailsExtra={brandType === "hermes_local" && detectedHermesModel.data ? (
+                              <p className="text-xs text-muted-foreground">
+                                Hermes default: {detectedHermesModel.data.model}
+                                {detectedHermesProvider ? ` · provider ${detectedHermesProvider}` : ""}
+                                {detectedHermesModel.data.hasApiKey ? " · credential configured" : " · no credential in ~/.hermes/.env"}
+                              </p>
+                            ) : undefined}
+                            onBindingChange={binding => { binding.mode !== "router" && setRuntimeAiBinding(binding); resetTest();
+                              if (accountCatalogAvailable && hashKey([aiBinding ?? null]) === hashKey([binding ?? null])) void refreshAccountModels(); }}
+                            // Expose "Default connection" in the wizard too (the
+                            // Harness/Runtime tab has it): clearing the binding
+                            // means the harness's own local config serves runs
+                            // and harness-config detection drives the model list.
+                            onBindingClear={() => { setRuntimeAiBinding(undefined); resetTest(); }}
+                          />
                         )}
                         {brandType === "hermes_local" && (
                           <SchemaConfigFields
@@ -1398,37 +1433,32 @@ function Setup({
                             </select>
                           </Field>
                         )}
-                        {!connectionAdapter && aiProviderForAdapter(brandType) && (
-                          <AiConnectionField companyId={companyId} agentName={name} adapterType={brandType} model={model} environmentId={environmentId ?? undefined} value={aiBinding}
-                            onChange={binding => { binding.mode !== "router" && setRuntimeAiBinding(binding); resetTest();
-                              if (accountCatalogAvailable && hashKey([aiBinding ?? null]) === hashKey([binding ?? null])) void refreshAccountModels();
-                            }} />
-                        )}
                         {((showModel && !usingKimiApi) ||
                           efforts.length > 0) && (
                           <div className="grid items-start gap-5 sm:grid-cols-2">
                             {showModel && !usingKimiApi && (
-                              <ModelDropdown
-                                presentation={brandType === "codex_local" ? "searchable" : "native"}
-                                models={connectionModels?.models ?? (brandType === "hermes_local" ? (hermesModelList ?? (models.data ?? [])) : (models.data ?? []))}
-                                loadingModels={connectionModels?.isLoading ?? (brandType === "hermes_local"
+                              <ProviderModelLinkageModelSelect
+                                companyId={companyId}
+                                harness={brandType}
+                                onAutoRebind={(_connectionName, rebind) => { setRuntimeAiBinding(rebind); resetTest(); }}
+                                modelValue={model}
+                                binding={aiBinding}
+                                fallbackModels={brandType === "hermes_local" ? (hermesModelList ?? (models.data ?? [])) : (models.data ?? [])}
+                                fallbackModelsLoading={brandType === "hermes_local"
                                   ? (isHermesDefaultProvider
                                     ? (detectedHermesProvider ? hermesDefaultModels.isLoading : models.isLoading)
                                     : providerModels.isLoading)
-                                  : models.isLoading)}
-                                onRefreshModels={connectionModels?.refreshModels ?? (accountCatalogAvailable ? async () => { await models.refetch(); } : undefined)}
-                                refreshingModels={connectionModels?.refreshing ?? (accountCatalogAvailable ? models.isFetching : undefined)}
-                                value={model}
-                                onChange={(value) => {
-                                  setModel(connectionModels?.resolveModel(value) ?? value);
+                                  : models.isLoading}
+                                onModelSelect={(resolvedId, rawId) => {
+                                  setModel(resolvedId);
                                   if (
                                     effort &&
-                                    !setupEfforts(adapterType, value).includes(
+                                    !setupEfforts(adapterType, rawId).includes(
                                       effort,
                                     )
                                   )
                                     setEffort("");
-                                  const nextProvider = value.split("/")[0];
+                                  const nextProvider = rawId.split("/")[0];
                                   if (
                                     multiProvider &&
                                     PROVIDER_ENV_KEYS[nextProvider] &&
@@ -1440,13 +1470,31 @@ function Setup({
                                   }
                                   resetTest();
                                 }}
-                                open={modelOpen}
-                                onOpenChange={setModelOpen}
-                                allowDefault={!isKimi && !multiProvider && !accountBoundCatalog && !nativeCursorCloud}
-                                required={isKimi || multiProvider || accountBoundCatalog || nativeCursorCloud}
-                                creatable={brandType !== "copilot_runtime"}
-                                groupByProvider={multiProvider && !connectionModels}
-                                preserveOrder={Boolean(connectionModels) || adapterCuratesModelOrder(brandType) || brandType === "hermes_local"}
+                                onRefreshModels={accountCatalogAvailable ? async () => { await models.refetch(); } : undefined}
+                                modelDropdownProps={connectionModels ? {
+                                  presentation: brandType === "codex_local" ? "searchable" : "native",
+                                  allowDefault: !isKimi && !multiProvider && !accountBoundCatalog && !nativeCursorCloud,
+                                  required: isKimi || multiProvider || accountBoundCatalog || nativeCursorCloud,
+                                  creatable: brandType !== "copilot_runtime",
+                                  groupByProvider: false,
+                                  preserveOrder: Boolean(connectionModels) || adapterCuratesModelOrder(brandType) || brandType === "hermes_local",
+                                } : {
+                                  presentation: brandType === "codex_local" ? "searchable" : "native",
+                                  allowDefault: !isKimi && !multiProvider && !accountBoundCatalog && !nativeCursorCloud,
+                                  required: isKimi || multiProvider || accountBoundCatalog || nativeCursorCloud,
+                                  creatable: brandType !== "copilot_runtime",
+                                  // Provider-grouped catalogs are only for the host default; a chosen connection must serve a single-connection list.
+                                  groupByProvider: multiProvider && !connectionModels && !aiBinding,
+                                  preserveOrder: Boolean(connectionModels) || adapterCuratesModelOrder(brandType) || brandType === "hermes_local",
+                                  // AMB-311 P2b: harness-config detection (adopt row + Detect button)
+                                  detectedModel: harnessDetection.data?.model || undefined,
+                                  detectedModelCandidates: harnessDetection.data?.candidates,
+                                  onDetectModel: async () => {
+                                    const result = await harnessDetection.refetch();
+                                    return result.data?.model || null;
+                                  },
+                                }}
+                                suppressModelError
                               />
                             )}
                             {efforts.length > 0 && (
@@ -1534,6 +1582,8 @@ function Setup({
                         {hasCredentialField && !aiBinding && !(
                           brandType === "hermes_local"
                         ) && (
+                          <details className="rounded-lg border border-border p-4">
+                            <summary className="cursor-pointer text-sm font-medium">Advanced: manual API key</summary>
                           <div className="grid gap-5 sm:grid-cols-2">
                             {chooseProvider && (
                               <Field label="API key provider">
@@ -1617,7 +1667,7 @@ function Setup({
                                   chooseProvider ? "sm:col-span-2" : undefined
                                 }
                               >
-                                <Field label="Or use an organization secret">
+                                <Field label="Use a company secret">
                                   <SecretPicker
                                     secretId={
                                       selectedBinding &&
@@ -1626,7 +1676,7 @@ function Setup({
                                         ? selectedBinding.secretId
                                         : ""
                                     }
-                                    secrets={companySecrets.data ?? []}
+                                    secrets={manualOrgSecrets}
                                     disabled={busy}
                                     onSelect={(secretId) => {
                                       setProviderBinding({
@@ -1647,9 +1697,10 @@ function Setup({
                               {isKimi && " Use a Kimi Code API key for this runner."}
                               {multiProvider && ` Use a ${provider}/model ID.`}
                             </p>
-                          </div>
-                        )}
-                        {brandType === "hermes_local" && !isHermesDefaultProvider && !aiBinding && (() => {
+                            </div>
+                            </details>
+                            )}
+                            {brandType === "hermes_local" && !isHermesDefaultProvider && !aiBinding && (() => {
                           const entry = hermesProviders.data?.find((item) => item.name === hermesProvider);
                           const hermesEnvKey = entry?.envVars[0] ?? providerKeys[hermesProvider] ?? "API_KEY";
                           const hermesSavedKey = userSecrets.data?.find((item) => item.definition.key === hermesEnvKey && item.secret);

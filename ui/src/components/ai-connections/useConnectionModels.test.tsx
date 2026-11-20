@@ -76,7 +76,7 @@ it("does not reuse public OpenRouter models after switching to a custom gateway"
   await render({ provider: "openai", method: "api_key", mode: "shared", connectionId: gateway.id, grantId: gateway.grantId });
   expect(result?.models).toEqual([]);
   expect(result?.resolveModel("private-model")).toBe("pilibala/private-model");
-  expect(result?.refreshModels).toBeUndefined();
+  expect(result?.refreshModels).toBeTypeOf("function");
 });
 
 it("leaves native model discovery alone", async () => {

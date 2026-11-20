@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   update: vi.fn(),
   get: vi.fn(),
   adapterModels: vi.fn(),
+  detectModel: vi.fn(async () => null),
   list: vi.fn(),
   hire: vi.fn(),
   testEnvironment: vi.fn(),
@@ -67,6 +68,16 @@ vi.mock("@/lib/router", () => ({
   useSearchParams: () => [state.params],
 }));
 vi.mock("@/components/AgentConfigForm", () => ({
+  AdapterLoginPanel: ({ onConnected }: { onConnected: (id: string) => void }) => (
+    <button onClick={() => onConnected("login-session")}>
+      Complete subscription login
+    </button>
+  ),
+}));
+// ModelDropdown moved to its own module (AMB-311 P1); mock it at the new
+// canonical path so both AgentConfigForm re-exports and the
+// ProviderModelLinkageSelect wrapper get the plain-input test double.
+vi.mock("@/components/ModelDropdown", () => ({
   ModelDropdown: ({
     value,
     onChange,
@@ -79,11 +90,6 @@ vi.mock("@/components/AgentConfigForm", () => ({
       value={value}
       onChange={(e) => onChange(e.target.value)}
     />
-  ),
-  AdapterLoginPanel: ({ onConnected }: { onConnected: (id: string) => void }) => (
-    <button onClick={() => onConnected("login-session")}>
-      Complete subscription login
-    </button>
   ),
 }));
 vi.mock("@/components/onboarding/PillGuy", () => ({ PillGuy: () => null }));

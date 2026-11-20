@@ -23,6 +23,8 @@ import {
 } from "@pilibalaai/adapter-utils/execution-target";
 import { discoverPiModelsCached } from "./models.js";
 import { parsePiJsonl } from "./parse.js";
+import { resolvePiCliCommand } from "./pi-command.js";
+import { preparePiRuntimeConfig } from "./runtime-config.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
 
 function summarizeStatus(checks: AdapterEnvironmentCheck[]): AdapterEnvironmentTestResult["status"] {
@@ -85,7 +87,7 @@ export async function testEnvironment(
 ): Promise<AdapterEnvironmentTestResult> {
   const checks: AdapterEnvironmentCheck[] = [];
   const config = parseObject(ctx.config);
-  const command = asString(config.command, "pi");
+  const command = resolvePiCliCommand(asString(config.command, ""));
   const target = ctx.executionTarget ?? null;
   const targetIsRemote = target?.kind === "remote";
   const cwd = resolveAdapterExecutionTargetCwd(target, asString(config.cwd, ""), process.cwd());
@@ -129,6 +131,14 @@ export async function testEnvironment(
     if (typeof value === "string") env[key] = value;
   }
   const runtimeEnv = normalizeEnv(ensurePathInEnv({ ...sanitizeInheritedPilibalaEnv(process.env), ...env }));
+  // Materialize custom Pi providers (PILIBALA_PI_PROVIDERS from the managed AI
+  // connection projection) into a managed PI_CODING_AGENT_DIR, mirroring
+  // execute.ts. Without this, `pi --list-models` and the hello probe read the
+  // default agent config and a projected gateway connection shows no models.
+  const preparedRuntimeConfig = await preparePiRuntimeConfig({ env: runtimeEnv });
+  if (preparedRuntimeConfig.agentConfigDir) {
+    runtimeEnv.PI_CODING_AGENT_DIR = preparedRuntimeConfig.agentConfigDir;
+  }
 
   const cwdInvalid = checks.some((check) => check.code === "pi_cwd_invalid");
   if (cwdInvalid) {
@@ -333,6 +343,7 @@ export async function testEnvironment(
     }
   }
 
+  await preparedRuntimeConfig.cleanup();
   return {
     adapterType: ctx.adapterType,
     status: summarizeStatus(checks),
