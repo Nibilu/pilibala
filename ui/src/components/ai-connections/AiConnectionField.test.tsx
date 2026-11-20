@@ -59,7 +59,7 @@ async function click(label: string) {
     const trigger = document.querySelector('[role="combobox"][aria-label="Connection"]')!;
     flushSync(() => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
     await settle();
-    const option = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find(item => item.textContent?.includes("Connect an account"));
+    const option = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find(item => item.textContent?.includes("Create a connection"));
     expect(option).toBeDefined();
     flushSync(() => option!.click());
     await settle();

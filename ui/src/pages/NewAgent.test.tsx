@@ -758,7 +758,7 @@ describe("New agent setup", () => {
     const trigger = document.querySelector('[role="combobox"][aria-label="Connection"]')!;
     await act(async () => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
     await settle();
-    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent?.includes("Connect an account"));
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent?.includes("Create a connection"));
     expect(option).toBeDefined();
     await act(async () => option!.click());
     await settle();
@@ -1523,7 +1523,7 @@ describe("New agent setup", () => {
     const connectionSelect = container.querySelector('[role="combobox"][aria-label="Connection"]')!;
     await act(async () => connectionSelect.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
     await settle();
-    const connectOption = [...document.querySelectorAll('[role="option"]')].find(option => option.textContent?.includes("Connect an account"))!;
+    const connectOption = [...document.querySelectorAll('[role="option"]')].find(option => option.textContent?.includes("Create a connection"))!;
     expect(connectOption).toBeTruthy();
     await act(async () => (connectOption as HTMLElement).click());
     await settle();
