@@ -696,7 +696,7 @@ function Setup({
   function preparedConfig(nextConnection = connection, setupRunner?: AgentRunner) {
     if (nativeCursorCloud && !model.trim()) throw new Error("Enter the exact Cursor Cloud model ID.");
     if (isKimi && !model.trim()) throw new Error("Enter the exact Kimi model ID.");
-    if (isKimi && !apiKey.trim() && !selectedBinding) throw new Error("Enter KIMI_API_KEY or select an organization secret.");
+    if (isKimi && !apiKey.trim() && !selectedBinding) throw new Error("Enter KIMI_API_KEY or select a company secret.");
     if (brandType === "antigravity_runtime" && (!model.trim() || model !== model.trim() || /\s/.test(model) || ["auto", "default"].includes(model.toLowerCase())))
       throw new Error("Choose or enter an exact Google Antigravity model ID.");
     if (brandType === "copilot_runtime" && !models.data?.some(candidate => candidate.id === model))
@@ -717,7 +717,7 @@ function Setup({
       throw new Error(
         adapterType === "cursor_cloud"
           ? "Enter a Cursor API key."
-          : `Enter ${envKey} or select an organization secret.`,
+          : `Enter ${envKey} or select a company secret.`,
       );
     if (adapterType === "hermes_gateway") {
       try {
@@ -1476,14 +1476,15 @@ function Setup({
                                   allowDefault: !isKimi && !multiProvider && !accountBoundCatalog && !nativeCursorCloud,
                                   required: isKimi || multiProvider || accountBoundCatalog || nativeCursorCloud,
                                   creatable: brandType !== "copilot_runtime",
-                                  groupByProvider: multiProvider && !connectionModels,
+                                  groupByProvider: false,
                                   preserveOrder: Boolean(connectionModels) || adapterCuratesModelOrder(brandType) || brandType === "hermes_local",
                                 } : {
                                   presentation: brandType === "codex_local" ? "searchable" : "native",
                                   allowDefault: !isKimi && !multiProvider && !accountBoundCatalog && !nativeCursorCloud,
                                   required: isKimi || multiProvider || accountBoundCatalog || nativeCursorCloud,
                                   creatable: brandType !== "copilot_runtime",
-                                  groupByProvider: multiProvider && !connectionModels,
+                                  // Provider-grouped catalogs are only for the host default; a chosen connection must serve a single-connection list.
+                                  groupByProvider: multiProvider && !connectionModels && !aiBinding,
                                   preserveOrder: Boolean(connectionModels) || adapterCuratesModelOrder(brandType) || brandType === "hermes_local",
                                   // AMB-311 P2b: harness-config detection (adopt row + Detect button)
                                   detectedModel: harnessDetection.data?.model || undefined,
@@ -1581,6 +1582,8 @@ function Setup({
                         {hasCredentialField && !aiBinding && !(
                           brandType === "hermes_local"
                         ) && (
+                          <details className="rounded-lg border border-border p-4">
+                            <summary className="cursor-pointer text-sm font-medium">Advanced: manual API key</summary>
                           <div className="grid gap-5 sm:grid-cols-2">
                             {chooseProvider && (
                               <Field label="API key provider">
@@ -1664,7 +1667,7 @@ function Setup({
                                   chooseProvider ? "sm:col-span-2" : undefined
                                 }
                               >
-                                <Field label="Or use an organization secret">
+                                <Field label="Use a company secret">
                                   <SecretPicker
                                     secretId={
                                       selectedBinding &&
@@ -1694,9 +1697,10 @@ function Setup({
                               {isKimi && " Use a Kimi Code API key for this runner."}
                               {multiProvider && ` Use a ${provider}/model ID.`}
                             </p>
-                          </div>
-                        )}
-                        {brandType === "hermes_local" && !isHermesDefaultProvider && !aiBinding && (() => {
+                            </div>
+                            </details>
+                            )}
+                            {brandType === "hermes_local" && !isHermesDefaultProvider && !aiBinding && (() => {
                           const entry = hermesProviders.data?.find((item) => item.name === hermesProvider);
                           const hermesEnvKey = entry?.envVars[0] ?? providerKeys[hermesProvider] ?? "API_KEY";
                           const hermesSavedKey = userSecrets.data?.find((item) => item.definition.key === hermesEnvKey && item.secret);

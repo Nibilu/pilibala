@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { aiRoutingModel, type AiConnectionBinding, type AiProviderRouting } from "@pilibalaai/shared";
 import { aiConnectionsApi } from "@/api/ai-connections";
 import { agentsApi } from "@/api/agents";
@@ -10,6 +11,8 @@ export function useConnectionModelsState(
   binding: AiConnectionBinding | undefined,
   harness: string,
 ) {
+  const client = useQueryClient();
+  const [refreshingRouting, setRefreshingRouting] = useState(false);
   const accounts = useQuery({
     queryKey: ["ai-connections", companyId],
     queryFn: () => aiConnectionsApi.list(companyId!),
@@ -36,9 +39,31 @@ export function useConnectionModelsState(
   const effectiveRouting: AiProviderRouting | undefined = routing ?? (openRouter
     ? { kind: "openrouter", protocol: "chat", auth: "bearer", models: [] }
     : undefined);
-  const modelOptions = discover
+  const rawModels = discover
     ? (catalog.data ?? []).map((m) => ({ ...m, id: ["opencode_local", "pi_local"].includes(harness) ? m.id : m.id.replace(/^openrouter\//, "") }))
     : routing?.models ?? [];
+  // The catalog must show exactly what the connection serves: dedupe by the
+  // transport-resolved id so repeated upstream entries never double-list.
+  const seenIds = new Set<string>();
+  const modelOptions = rawModels.filter((m) => {
+    const resolved = aiRoutingModel(effectiveRouting!, harness, m.id);
+    if (seenIds.has(resolved)) return false;
+    seenIds.add(resolved);
+    return true;
+  });
+  // Gateway/local connections can re-run server-side discovery against their
+  // base URL; the merged catalog lands on the connection's routing.models.
+  const refreshRoutingModels = routing && (routing.kind === "gateway" || routing.kind === "local") && connection && companyId
+    ? async () => {
+        setRefreshingRouting(true);
+        try {
+          await aiConnectionsApi.refreshModels(companyId, connection.id);
+          await client.invalidateQueries({ queryKey: ["ai-connections", companyId] });
+        } finally {
+          setRefreshingRouting(false);
+        }
+      }
+    : undefined;
   const connectionModels = effectiveRouting
     ? {
         models: modelOptions.map((m) => ({
@@ -47,8 +72,8 @@ export function useConnectionModelsState(
         })),
         isLoading: discover && (catalog.isLoading || catalogView.kind === "reconnecting"),
         error: discover && catalogView.kind === "error" ? catalog.error : null,
-        refreshing: discover && catalog.isFetching,
-        refreshModels: discover ? async () => { await catalog.refetch(); } : undefined,
+        refreshing: (discover && catalog.isFetching) || refreshingRouting,
+        refreshModels: discover ? async () => { await catalog.refetch(); } : refreshRoutingModels,
         resolveModel: (model: string) =>
           aiRoutingModel(effectiveRouting, harness, model),
       }

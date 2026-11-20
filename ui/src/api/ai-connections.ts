@@ -13,5 +13,6 @@ export const aiConnectionsApi = {
   list: (companyId: string, agentId?: string, options?: RequestOptions) => api.get<AiConnectionList>(`/companies/${companyId}/ai-connections${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ""}`, { timeoutMs: 15_000, ...options }),
   create: (companyId: string, input: CreateAiConnection) => api.post<{ connectionId: string; grantId: string }>(`/companies/${companyId}/ai-connections`, input),
   setDefault: (companyId: string, grantId: string) => api.put(`/companies/${companyId}/ai-connections/default`, { grantId }),
+  refreshModels: (companyId: string, connectionId: string) => api.post<{ models: Array<{ id: string; label?: string }>; discovered: number; reason?: string }>(`/companies/${companyId}/ai-connections/${connectionId}/models/refresh`, {}, { timeoutMs: 20_000 }),
   loginResult: (companyId: string, sessionId: string) => api.get<{ connectionId: string; grantId: string }>(`/companies/${companyId}/ai-connections/login/${encodeURIComponent(sessionId)}`),
 };

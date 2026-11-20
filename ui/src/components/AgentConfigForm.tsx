@@ -2116,7 +2116,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   defaultLabel: adapterType === "claude_local" ? `Default (${DEFAULT_CLAUDE_LOCAL_MODEL})` : undefined,
                   allowDefault: adapterType !== "opencode_local" && adapterType !== "pi_local" && adapterType !== "pilibala_runner" && !isCursorCloudRunner,
                   required: adapterType === "opencode_local" || adapterType === "pi_local" || isCursorCloudRunner || runnerAcpxAgent === "antigravity",
-                  groupByProvider: !connectionModels && (adapterType === "opencode_local" || adapterType === "pi_local"),
+                  groupByProvider: !connectionModels && !modelAiBinding && (adapterType === "opencode_local" || adapterType === "pi_local"),
                   preserveOrder: Boolean(connectionModels) || adapterCuratesModelOrder(adapterType),
                   creatable: true,
                   detectedModel: connectionModels ? undefined : detectedModel,
