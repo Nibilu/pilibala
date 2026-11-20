@@ -5889,7 +5889,14 @@ export function agentRoutes(
         || (nextAiBinding.mode !== "router" && ["model", "provider", "acpxAgent", "engine"].some(
           key => aiConfig[key] !== existing.adapterConfig[key],
         ));
-      if (nextAiBinding.mode !== "router" && !isAiConnectionCompatible(nextAiBinding, requestedAdapterType, aiConfig.model, aiConfig.provider, aiConfig.acpxAgent)) throw unprocessable("Select an AI connection compatible with the new harness and model");
+      // Bindings backed by a connection (shared/delegated ids or the
+      // responsible user's default) are judged against the resolved
+      // connection's routing metadata by aiConnectionService.select() inside
+      // validateManagedAgentBinding below. The binding-only check here cannot
+      // see that metadata and misjudges gateway models whose ids use the
+      // upstream provider namespace (e.g. "z-ai/..." on an openai gateway).
+      const bindingBackedByConnection = nextAiBinding.mode === "responsible_user" || "connectionId" in nextAiBinding;
+      if (nextAiBinding.mode !== "router" && !bindingBackedByConnection && !isAiConnectionCompatible(nextAiBinding, requestedAdapterType, aiConfig.model, aiConfig.provider, aiConfig.acpxAgent)) throw unprocessable("Select an AI connection compatible with the new harness and model");
       const copilotConfigurationChanged = requestedAdapterType === "pilibala_runner" && aiConfig.provider === "acpx" && aiConfig.acpxAgent === "copilot"
         && (touchesAdapterConfiguration || Object.prototype.hasOwnProperty.call(patchData, "defaultEnvironmentId"));
       if (runtimeSettings || changed || runtimeSelectionChanged || copilotConfigurationChanged) {
