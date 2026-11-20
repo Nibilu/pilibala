@@ -55,6 +55,26 @@ export function managedProviderRouting(
   } else if (harness === "pi_local" && route.kind === "openrouter") {
     env.OPENROUTER_API_KEY = credential;
     config.model = aiRoutingModel(route, harness, model);
+  } else if (harness === "pi_local") {
+    // Generic gateway/local (chat_completions + baseUrl): pi has no base-url
+    // CLI flag or env var, so the connection is projected as a models.json
+    // providers entry via PILIBALA_PI_PROVIDERS. The pi-local adapter's
+    // preparePiRuntimeConfig materializes it into a managed PI_CODING_AGENT_DIR
+    // and expands {env:VAR} placeholders server-side, so the credential rides
+    // the child env only — never a literal in a persisted config.
+    const gatewayKeyName = "PILIBALA_PI_GATEWAY_KEY";
+    if (route.auth !== "none") env[gatewayKeyName] = credential;
+    const routingModels = Array.isArray(route.models) ? route.models : [];
+    const modelIds = [...new Set([...routingModels, ...(model ? [model] : [])])];
+    env.PILIBALA_PI_PROVIDERS = JSON.stringify({
+      pilibala: {
+        baseUrl,
+        api: "openai-completions",
+        ...(route.auth === "none" ? {} : { apiKey: `{env:${gatewayKeyName}}` }),
+        models: modelIds.map((id) => ({ id, name: id, input: ["text"] })),
+      },
+    });
+    config.model = model ? `pilibala/${model}` : "";
   } else if (harness === "opencode_local") {
     const provider = route.kind === "openrouter" ? "openrouter" : "pilibala";
     if (route.kind === "openrouter") env.OPENROUTER_API_KEY = credential;
