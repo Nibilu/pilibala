@@ -42,15 +42,18 @@ export function useConnectionModelsState(
   const rawModels = discover
     ? (catalog.data ?? []).map((m) => ({ ...m, id: ["opencode_local", "pi_local"].includes(harness) ? m.id : m.id.replace(/^openrouter\//, "") }))
     : routing?.models ?? [];
+  const routingForModels = effectiveRouting;
   // The catalog must show exactly what the connection serves: dedupe by the
   // transport-resolved id so repeated upstream entries never double-list.
   const seenIds = new Set<string>();
-  const modelOptions = rawModels.filter((m) => {
-    const resolved = aiRoutingModel(effectiveRouting!, harness, m.id);
-    if (seenIds.has(resolved)) return false;
-    seenIds.add(resolved);
-    return true;
-  });
+  const modelOptions = routingForModels
+    ? rawModels.filter((m) => {
+        const resolved = aiRoutingModel(routingForModels, harness, m.id);
+        if (seenIds.has(resolved)) return false;
+        seenIds.add(resolved);
+        return true;
+      })
+    : rawModels;
   // Gateway/local connections can re-run server-side discovery against their
   // base URL; the merged catalog lands on the connection's routing.models.
   const refreshRoutingModels = routing && (routing.kind === "gateway" || routing.kind === "local") && connection && companyId
@@ -64,12 +67,26 @@ export function useConnectionModelsState(
         }
       }
     : undefined;
+  const resolvedModels = routingForModels
+    ? modelOptions.map((m) => ({
+        id: aiRoutingModel(routingForModels, harness, m.id),
+        label: m.label ?? m.id,
+      }))
+    : [];
+  // Providers a connection can serve, derived from its own catalog: the id
+  // prefix of "provider/model" entries (gateway/live catalogs are
+  // provider-prefixed). A single-provider connection yields one entry and the
+  // UI locks the provider to it; multi-provider connections offer the set.
+  const providerSet = new Set<string>();
+  for (const model of resolvedModels) {
+    const separator = model.id.indexOf("/");
+    if (separator > 0) providerSet.add(model.id.slice(0, separator));
+  }
+  const providers = [...providerSet].sort();
   const connectionModels = effectiveRouting
     ? {
-        models: modelOptions.map((m) => ({
-          id: aiRoutingModel(effectiveRouting, harness, m.id),
-          label: m.label ?? m.id,
-        })),
+        models: resolvedModels,
+        providers,
         isLoading: discover && (catalog.isLoading || catalogView.kind === "reconnecting"),
         error: discover && catalogView.kind === "error" ? catalog.error : null,
         refreshing: (discover && catalog.isFetching) || refreshingRouting,

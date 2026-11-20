@@ -30,7 +30,7 @@ import { describeError } from "@/api/errors";
  *   auto-rebind notices.
  * - `ProviderModelLinkageConnection` — the managed-connection field
  *   (compatibility-filtered list, "Responsible user's default",
- *   "Connect an account…"), optionally collapsed under the hermes-style
+ *   "Create a connection…"), optionally collapsed under the hermes-style
  *   Advanced disclosure, plus the "no compatible connection" reason.
  * - `ProviderModelLinkageSelect` — the composite for the adjacent
  *   create-agent layout (connection field, then the model/effort grid).
@@ -62,6 +62,7 @@ export function useProviderModelLinkage({
   fallbackModels,
   fallbackModelsLoading,
   providerBaseUrl,
+  providerFilter,
 }: Omit<ProviderModelLinkageSharedProps, "agentId"> & {
   modelValue: string;
   /** Managed binding the model catalog follows (`undefined` = host default). */
@@ -73,6 +74,8 @@ export function useProviderModelLinkage({
   /** baseUrl of the chosen adapter-catalog provider (linkage preference input). */
   providerBaseUrl?: string | null;
   onModelSelect: (resolvedId: string, rawId: string) => void;
+  /** Connection-catalog provider filter (prefix of "provider/model" ids; `null`/empty = all providers). */
+  providerFilter?: string | null;
 }) {
   const connectionModels = useConnectionModels(
     companyId,
@@ -117,7 +120,17 @@ export function useProviderModelLinkage({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onAutoRebind is the write target, not a data input; the rebindRef guard prevents write loops
   }, [linkageDisabled, companyId, accounts.data, harness, modelValue, binding, providerBaseUrl, onAutoRebind]);
 
-  const models = connectionModels?.models ?? fallbackModels;
+  // Provider filter applies only to the connection catalog (the host-default
+  // fallback keeps its own scoping); a filter with no matches degrades to the
+  // full connection list rather than an empty dropdown.
+  const connectionCatalogModels = connectionModels?.models ?? null;
+  const filteredConnectionModels = connectionCatalogModels && providerFilter
+    ? connectionCatalogModels.filter((model) => model.id.startsWith(`${providerFilter}/`))
+    : connectionCatalogModels;
+  const models = (filteredConnectionModels && filteredConnectionModels.length
+    ? filteredConnectionModels
+    : connectionCatalogModels)
+    ?? fallbackModels;
   const loadingModels = connectionModels?.isLoading ?? (fallbackModelsLoading ?? false);
   const dropdownProps = {
     models,
@@ -131,6 +144,8 @@ export function useProviderModelLinkage({
   } as const;
   return {
     connectionModels,
+    /** Providers the bound connection serves, from its own catalog (empty on host default). */
+    connectionProviders: connectionModels?.providers ?? [],
     models,
     loadingModels,
     autoReboundConnection,
@@ -222,6 +237,10 @@ export function ProviderModelLinkageModelSelect({
   // Same narrowing AgentConfigForm applies: a router binding names a pool, not
   // an individual account catalog, so the model side treats it as "no catalog".
   const modelBinding = aiConnectionBindingSchema.safeParse(binding).data;
+  // Connection-catalog provider filter: derived view state (never persisted —
+  // the chosen model id keeps its own provider prefix). Defaults to the
+  // current model's provider so the dropdown opens narrowed to it.
+  const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const linkage = useProviderModelLinkage({
     companyId,
     harness,
@@ -233,6 +252,7 @@ export function ProviderModelLinkageModelSelect({
     fallbackModels,
     fallbackModelsLoading,
     providerBaseUrl,
+    providerFilter,
   });
   const dropdown = useProviderModelDropdown({
     onModelSelect,
@@ -243,8 +263,29 @@ export function ProviderModelLinkageModelSelect({
     dropdownProps: linkage.dropdownProps,
     modelDropdownProps,
   });
+  const modelProviderPrefix = modelValue.includes("/")
+    ? modelValue.slice(0, modelValue.indexOf("/"))
+    : null;
+  const effectiveProviderFilter = providerFilter
+    ?? (modelProviderPrefix && linkage.connectionProviders.includes(modelProviderPrefix) ? modelProviderPrefix : null);
   return (
     <>
+      {!hideModelSide && linkage.connectionProviders.length > 1 && (
+        <select
+          aria-label="Model provider"
+          className="block w-full rounded-md border bg-background px-3 py-2 text-sm"
+          value={effectiveProviderFilter ?? ""}
+          onChange={(event) => setProviderFilter(event.target.value || null)}
+        >
+          <option value="">All providers ({linkage.connectionProviders.length})</option>
+          {linkage.connectionProviders.map((provider) => (
+            <option key={provider} value={provider}>{provider}</option>
+          ))}
+        </select>
+      )}
+      {!hideModelSide && linkage.connectionProviders.length === 1 && (
+        <p className="text-xs text-muted-foreground">Provider: {linkage.connectionProviders[0]} (set by the connection)</p>
+      )}
       {!hideModelSide && <ModelDropdown {...dropdown} />}
       {!suppressModelError && linkage.connectionModelError ? (
         <p className="text-xs text-destructive">{describeError(linkage.connectionModelError).body}</p>
