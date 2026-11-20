@@ -7,6 +7,7 @@ import { agentsApi, type AdapterModel } from "@/api/agents";
 import { aiConnectionsApi } from "@/api/ai-connections";
 import { getAdapterLabel } from "@/adapters/adapter-display-registry";
 import { agentConnection, agentDefaultModel, bulkAgentHarness, bulkConnectionName, mapBulkAgents, resolveBulkConnection, sameBinding } from "@/lib/bulk-agent-settings";
+import { aiConnectionCompatRequirement } from "@/lib/connection-model-linkage";
 import { nativeTaskModelCatalogOptions } from "@/lib/native-model-catalog";
 import { queryKeys } from "@/lib/queryKeys";
 import { AgentIdentityChipContent, agentIdentityChipClass } from "./AgentIdentityChip";
@@ -88,7 +89,7 @@ export function AgentBulkSettingsSheet({ companyId, agents, totalSelected, onClo
     let problem: string | null = null;
     if (row.binding) {
       problem = bindingProblem(row.binding, { companyId, provider: row.binding.provider }, row.accounts.connections, row.accounts.currentUserId, agent.id);
-      if (!problem && !isAiConnectionCompatible(row.binding, harness, nextModel)) problem = "Choose a model compatible with this connection.";
+      if (!problem && !isAiConnectionCompatible(aiConnectionCompatRequirement(row.accounts.connections, row.binding, row.accounts.currentUserId), harness, nextModel)) problem = "Choose a model compatible with this connection.";
     }
     if (!problem && row.restricted && !row.models.some(m => m.id === nextModel)) problem = `${nextModel ?? "Harness default"} isn’t available on this connection. Choose a different connection or change the default model.`;
     return problem ? [{ agent, message: problem }] : [];

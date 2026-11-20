@@ -9,6 +9,7 @@ import {
   type AiProvider,
   type AiManagedConnectionSummary,
 } from "@pilibalaai/shared";
+import { aiConnectionCompatRequirement } from "@/lib/connection-model-linkage";
 import { aiConnectionsApi } from "@/api/ai-connections";
 import { describeError } from "@/api/errors";
 import { useQueryView } from "@/components/QueryView";
@@ -147,7 +148,7 @@ export function AiConnectionField({
     );
   return (
     <div className="space-y-4">
-      {value && value.mode !== "router" && (!["opencode_local", "pi_local"].includes(adapterType) || Boolean(model)) && !isAiConnectionCompatible(value, adapterType, model) && (
+      {value && value.mode !== "router" && (!["opencode_local", "pi_local"].includes(adapterType) || Boolean(model)) && !isAiConnectionCompatible(aiConnectionCompatRequirement(accounts.data?.connections ?? [], value, accounts.data?.currentUserId ?? ""), adapterType, model) && (
         <p role="alert" className="text-sm text-destructive">
           This connection does not support the current harness and model. Choose
           a compatible connection before saving.

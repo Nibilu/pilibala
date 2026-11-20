@@ -2,8 +2,36 @@ import {
   aiRoutingModel,
   isAiConnectionCompatible,
   type AiConnectionBinding,
+  type AiConnectionMetadata,
   type AiManagedConnectionSummary,
 } from "@pilibalaai/shared";
+
+/**
+ * Resolve the compatibility requirement for a saved binding against the
+ * connections list, the same way the backend select() does: judge against the
+ * RESOLVED connection's metadata (routing included), never the bare binding.
+ * A bare binding carries no routing, so pi_local would fall into the
+ * fixed-binding branch whose model-prefix rule ("openai/...") is meant for
+ * native provider credentials only — gateway connections enumerate bare model
+ * ids and would always render a false "incompatible" verdict in the UI.
+ */
+export function aiConnectionCompatRequirement(
+  connections: AiManagedConnectionSummary[],
+  value: AiConnectionBinding,
+  currentUserId: string,
+): AiConnectionMetadata | AiConnectionBinding {
+  const connection = value.mode === "responsible_user"
+    ? connections.find((c) => c.provider === value.provider && c.isDefault
+        && c.ownerUserId === currentUserId && c.ownership === "personal")
+    : connections.find((c) => c.id === value.connectionId && c.grantId === value.grantId);
+  if (!connection) return value;
+  return {
+    provider: connection.provider,
+    method: connection.method,
+    mode: value.mode,
+    ...(connection.routing ? { routing: connection.routing } : {}),
+  };
+}
 
 /**
  * Connection ↔ model linkage for the harness/runtime and create-agent forms.
