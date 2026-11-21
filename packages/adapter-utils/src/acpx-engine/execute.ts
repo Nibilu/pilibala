@@ -2832,6 +2832,26 @@ function sessionConfigOptions(prepared: AcpxPreparedRuntime): Array<{ key: strin
   return options;
 }
 
+/** Race one startup await against the run's stop signal. An operator Stop that
+ * lands during bring-up must settle the attempt immediately instead of waiting
+ * for the in-flight RPC — a backend that is still booting can hold that RPC for
+ * tens of seconds (AMB-323: a Stop during hermes-acp boot held the run for 32s).
+ * The abandoned RPC cannot restart preparation: the settlement owns the runtime
+ * cleanup, and a late result of the losing promise is intentionally ignored. */
+async function abortDuringStartupStep<T>(signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
+  if (!signal) return work();
+  if (signal.aborted) throw signal.reason ?? new Error("Execution stopped");
+  const workPromise = Promise.resolve().then(work);
+  // A losing promise that later rejects must never surface as unhandled.
+  void workPromise.catch(() => {});
+  return await Promise.race([
+    workPromise,
+    new Promise<never>((_, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason ?? new Error("Execution stopped")), { once: true });
+    }),
+  ]);
+}
+
 async function applySessionConfigOptions(input: {
   runtime: AcpRuntime;
   handle: AcpRuntimeHandle;
@@ -5293,14 +5313,53 @@ export function createAcpxEngineExecutor(deps: AcpxEngineExecutorOptions = {}) {
       }
       const configureSessionStart = now();
       try {
-        await applySessionConfigOptions({
+        await abortDuringStartupStep(ctx.signal, () => applySessionConfigOptions({
           runtime,
           handle: sessionHandle,
           prepared,
           onLog: ctx.onLog,
-        });
+        }));
         await emitPhase("configure_session", configureSessionStart, "ok");
       } catch (err) {
+        // An operator Stop during session configuration settles immediately as
+        // a clean cancelled attempt — never as a typed config failure, and
+        // never only after the remaining config RPCs finish (AMB-323). The
+        // settlement below closes the runtime, so the abandoned RPC cannot
+        // restart preparation or leak the child.
+        if (ctx.signal?.aborted) {
+          const stopMessage = err instanceof Error ? err.message : String(err);
+          runtimeSettlement = {
+            mode: "direct",
+            handle: sessionHandle,
+            reason: "pilibala stop cleanup",
+            discardPersistentState: false,
+            dropWarmEntry: true,
+            recordCloseError: true,
+            cancelTurnReason: null,
+            skipRemoteClose: false,
+          };
+          await emitPhase("configure_session", configureSessionStart, "failed");
+          capturedResult = {
+            exitCode: null,
+            signal: null,
+            timedOut: false,
+            errorCode: "cancelled",
+            errorMessage: stopMessage,
+            executionRecovery: { kind: "bootstrap", providerWorkStarted: false },
+            ...billingFields,
+            ...referencedProjectStagingFailuresField,
+            model: prepared.requestedModel || null,
+            clearSession,
+            resultJson: {
+              phase: "configure_session",
+              executionCancellation: {
+                state: "acknowledged", acknowledgedAt: new Date().toISOString(), forced: false,
+              },
+            },
+            summary: stopMessage,
+          };
+          return settleFor("session_configuration", err);
+        }
         // A resume failure can also surface at configure_session (observed on
         // the hermes engine=acp lane: the backend's load_session raises while
         // acpx configures the resumed session). The failure is classified as
@@ -5402,12 +5461,12 @@ export function createAcpxEngineExecutor(deps: AcpxEngineExecutorOptions = {}) {
                 throw new Error("ACPX did not return a runtime session handle during the configure resume repair.");
               }
               sessionHandle = repairedHandle;
-              await applySessionConfigOptions({
+              await abortDuringStartupStep(ctx.signal, () => applySessionConfigOptions({
                 runtime,
                 handle: sessionHandle,
                 prepared,
                 onLog: ctx.onLog,
-              });
+              }));
               await emitPhase("configure_session", configureSessionStart, "ok");
               return true;
             } catch (repairError) {

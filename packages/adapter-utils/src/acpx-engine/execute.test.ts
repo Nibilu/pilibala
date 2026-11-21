@@ -7678,6 +7678,63 @@ describe("ACPX engine run lifecycle corrections (F3: one teardown error policy)"
     expect(scopes.size).toBe(0);
   });
 
+  it("settles a Stop during session configuration immediately as a clean cancelled attempt (AMB-323)", async () => {
+    const root = await makeTempRoot();
+    const controller = new AbortController();
+    let releaseModel!: () => void;
+    let modelRpcStarted!: () => void;
+    const modelBlocked = new Promise<void>((resolve) => { releaseModel = resolve; });
+    const modelRpcStart = new Promise<void>((resolve) => { modelRpcStarted = resolve; });
+    let created = 0;
+    const closes: number[] = [];
+    const execute = createAcpxEngineExecutor({
+      createRuntime: () => {
+        created += 1;
+        return {
+          ensureSession: async () => okHandle,
+          // The turn must never start once a Stop landed during configuration.
+          startTurn: () => {
+            throw new Error("turn started after a Stop during session configuration");
+          },
+          setConfigOption: async () => {},
+          // A backend that is still booting holds the model RPC open.
+          setSessionModel: async () => {
+            modelRpcStarted();
+            await modelBlocked;
+          },
+          close: async () => {
+            closes.push(created);
+          },
+        } as never;
+      },
+    });
+    const execution = execute({
+      runId: "stop-during-configure-fixture",
+      agent: { id: "agent-1", companyId: "company-1" },
+      runtime: {},
+      config: {
+        agent: "kimi",
+        agentCommand: "node ./fake-acp.js",
+        stateDir: path.join(root, "state"),
+        cwd: root,
+        model: "kimi-k2-turbo",
+      },
+      context: {},
+      signal: controller.signal,
+      onLog: async () => {},
+      onMeta: async () => {},
+      onEvent: async () => {},
+    } as never);
+    await modelRpcStart;
+    controller.abort(new Error("Cancelled by a board operator"));
+    const result = await execution;
+    expect(result.errorCode).toBe("cancelled");
+    expect(result.resultJson?.executionCancellation).toMatchObject({ state: "acknowledged" });
+    // The settlement closed the runtime instead of leaving the child alive.
+    expect(closes).toEqual([1]);
+    releaseModel();
+  });
+
   it("test_clean_completed_remote_teardown_runs_bridge_stop_then_sync_back_then_lease_release", async () => {
     // cleanupRemoteBridges (execute.ts:2306-2326) fixes the sub-order for a clean
     // exit: stop both bridges (allSettled) → run the managed-home sync-back

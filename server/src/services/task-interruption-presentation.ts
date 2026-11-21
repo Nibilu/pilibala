@@ -183,6 +183,16 @@ export function projectTaskInterruption(issue: ProjectionIssue, input: Projectio
   // physical containment and pending cleanup keep their execution-side gates.
   if (!wait && run.runtimeMode === "native" && run.companyId === issue.companyId && run.nativeIssueId === issue.id
       && isAcknowledgedNativeStop({ ...run, companyId: run.companyId, nativeIssueId: run.nativeIssueId })) return base;
+  // A legacy adapter's audited operator Stop is equally intentional. The board
+  // cancel route stamps user attribution and the settled adapter acknowledges
+  // its execution cancellation; the fallback "failed attempt" below must not
+  // turn that stop into a Retry prompt (AMB-323).
+  const legacyStopReceipt = run.resultJson?.executionCancellation;
+  if (!wait && run.status === "cancelled"
+      && run.resultJson?.cancelledByActorType === "user"
+      && typeof run.resultJson?.cancelledByUserId === "string" && run.resultJson.cancelledByUserId
+      && Boolean(legacyStopReceipt) && typeof legacyStopReceipt === "object"
+      && (legacyStopReceipt as { state?: unknown }).state === "acknowledged") return base;
   // A queued-message Interrupt stops this run to deliver that exact message.
   // The stop is the user's intent and the message starts next, so show the
   // hand-off as working, not as a failed attempt.
@@ -313,6 +323,8 @@ export async function taskInterruptionPresentations(db: Db, companyId: string, i
         'projectAccessDenied', ${heartbeatRuns.resultJson}->'projectAccessDenied',
         'cancelledByActorType', ${boundedJsonString(sql`${heartbeatRuns.resultJson}->'cancelledByActorType'`, 32)},
         'cancelledByUserId', ${boundedJsonString(sql`${heartbeatRuns.resultJson}->'cancelledByUserId'`, 160)},
+        'executionCancellation', jsonb_build_object(
+          'state', ${heartbeatRuns.resultJson}->'executionCancellation'->>'state'),
         'queuedCommentInterruptQueueId', ${boundedJsonString(sql`${heartbeatRuns.resultJson}->'queuedCommentInterruptQueueId'`, 160)},
         'nativeCancellation', jsonb_build_object(
           'schema', ${boundedJsonString(sql`${heartbeatRuns.resultJson}->'nativeCancellation'->'schema'`, 64)},

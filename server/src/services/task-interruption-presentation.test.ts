@@ -221,6 +221,46 @@ describe("intentional native Stop presentation", () => {
   });
 });
 
+describe("intentional legacy operator Stop presentation", () => {
+  const workingIssue = { ...issue, status: "in_progress" };
+  function legacyOperatorStoppedRun() {
+    return { ...run, status: "cancelled", runtimeMode: "legacy" as const, nativeIssueId: null,
+      errorCode: "cancelled", resultJson: {
+        cancelledByActorType: "user", cancelledByUserId: "board",
+        executionCancellation: { state: "acknowledged", acknowledgedAt: new Date().toISOString(), forced: false },
+      } };
+  }
+  it("does not offer a failed-attempt Retry for an acknowledged legacy operator Stop", () => {
+    expect(projectTaskInterruption(workingIssue, { run: legacyOperatorStoppedRun(), agent, paused: false, approval: false }))
+      .toMatchObject({ state: "resolved", canRetry: false, userAction: null });
+  });
+  it.each([
+    { label: "unacknowledged cancellation", receipt: { state: "requested" } },
+    { label: "missing receipt", receipt: undefined },
+    { label: "system attribution", actorType: "system" },
+    { label: "missing user id", userId: null },
+  ])("keeps the failed-attempt presentation without the full operator stop receipt: $label", change => {
+    const stopped = legacyOperatorStoppedRun();
+    const resultJson: Record<string, unknown> = { ...stopped.resultJson };
+    if ("receipt" in change) {
+      if (change.receipt === undefined) delete resultJson.executionCancellation;
+      else resultJson.executionCancellation = change.receipt;
+    }
+    if ("actorType" in change) resultJson.cancelledByActorType = change.actorType;
+    // A missing attribution is the failure shape under test; the projection
+    // stores whatever the cancel route stamped, including a null user id.
+    if ("userId" in change) resultJson.cancelledByUserId = change.userId;
+    expect(projectTaskInterruption(workingIssue, { run: { ...stopped, resultJson }, agent, paused: false, approval: false }))
+      .toMatchObject({ state: "failed", canRetry: true });
+  });
+  it("keeps a new saved input working after the stop", () => {
+    const stopped = legacyOperatorStoppedRun();
+    expect(projectTaskInterruption(workingIssue, { run: stopped, agent, paused: false, approval: false,
+      wait: { id: "new-input", requestedAt: new Date() } }))
+      .toMatchObject({ state: "working", canRetry: false });
+  });
+});
+
 it("preserves a provider explanation on a failed task without changing retry authority", () => {
   const providerFailure = { schema: "pilibala.provider-failure.v1", provider: "anthropic", phase: "startup",
     category: "rate_limit", message: "API error: 429 This request would exceed your account's rate limit.",
