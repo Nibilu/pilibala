@@ -105,7 +105,7 @@ describe("composer assignee picker", () => {
     expect(label()).toBe("Select model");
     await click("Clippy");
     expect(label()).toBe("GPT-6 Sol");
-    expect(container!.querySelector('[aria-label="Select model and effort"]')!.textContent).toContain("Low");
+    expect(container!.querySelector('[aria-label="Select model and effort"]')!.textContent).not.toContain("Low");
     await click("Select model and effort");
     await click("Choose exact model");
     await click("GPT-6 Astra");
@@ -118,7 +118,35 @@ describe("composer assignee picker", () => {
       });
     }
     expect(label()).toBe("GPT-6 Astra");
-    expect(container!.querySelector('[aria-label="Select model and effort"]')!.textContent).toContain("Low");
+    expect(container!.querySelector('[aria-label="Select model and effort"]')!.textContent).not.toContain("Low");
+  });
+
+  it("shows only the provider/model name in the closed trigger, never the effort label", () => {
+    render(vi.fn(), vi.fn(), false, {
+      modelOptionsOverride: [{ id: "nvidia/z-ai/glm-5.3-flash", label: "nvidia/z-ai/glm-5.3-flash" }],
+    });
+    const trigger = container!.querySelector('[aria-label="Select model and effort"]')!;
+    expect(trigger.textContent).toContain("gpt-6-sol");
+    expect(trigger.textContent).not.toContain("High");
+    expect(document.querySelector('[data-testid="task-chat-composer-model-label"]')?.textContent).toBe("gpt-6-sol");
+  });
+
+  it("renders provider/model once when the catalog label equals the id", async () => {
+    render(vi.fn(), vi.fn(), false, {
+      modelOptionsOverride: [
+        { id: "nvidia/z-ai/glm-5.3-flash", label: "nvidia/z-ai/glm-5.3-flash" },
+        { id: "gpt-6-astra", label: "GPT-6 Astra" },
+      ],
+    });
+    await click("Select model and effort");
+    await click("Choose exact model");
+    const rows = [...document.querySelectorAll<HTMLButtonElement>('button[role="option"]')]
+      .map((item) => item.textContent ?? "");
+    const piRow = rows.find((row) => row.includes("nvidia/z-ai/glm-5.3-flash"))!;
+    expect(piRow).toBeDefined();
+    expect(piRow.split("nvidia/z-ai/glm-5.3-flash").length - 1).toBe(1);
+    const labeledRow = rows.find((row) => row.includes("GPT-6 Astra"))!;
+    expect(labeledRow).toContain("gpt-6-astra");
   });
 
   it.each([
