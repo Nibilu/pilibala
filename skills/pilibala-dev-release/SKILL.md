@@ -52,6 +52,20 @@ description: >
    heartbeat_runs 中 status='running' 数为 0 时才允许执行；重启后需重新登录
    board 会话。
 
+6. **health.commit 不证明运行代码版本；packages/* 改动可能不触发热重启。**
+   `/api/health` 的 `commit` 字段是**实时读 git HEAD**，不是进程启动时的版本——
+   HEAD 新 ≠ 进程新。判定运行版本：`ss -tlnp | grep 3104` 取 PID →
+   `ps -o lstart -p <PID>`，与目标 commit 时间比较；或直接用业务 API 的行为验证
+   （如 pi 模型 label 是否已是新格式）。watch 模式下 `scanForBackendChanges`
+   仅 dev 模式生效，且 `tsx watch src/index.ts` 对 packages/* 的修改可能漏触发
+   ——改完 `packages/*/src`（如 pi-local models.ts）后若 API 行为未变，**显式
+   重启**（按规则 5 判 run 数）再验证。
+
+7. **模型目录不更新先查两处覆盖点。**
+   - declared models：`PILIBALA_ADAPTER_MODELS` env 声明的列表优先于
+     `adapter.listModels` 动态发现（registry.ts `declaredModelsForAdapter`）
+   - 动态发现缓存：pi-local models.ts 有 60s TTL 内存缓存
+
 ## 事故特征速查
 
 | 症状 | 根因 |
@@ -59,3 +73,5 @@ description: >
 | run=interrupted + `Scheduled bounded retry 1/2` + journal 有 tsx change 行 | 热重启自杀（违反规则 1） |
 | 重试秒失败 `Command not found in PATH: "pi"`，logBytes=0 | 谱系缺 pi-command.ts（违反规则 2） |
 | 页面报错横幅 Retry + Inspect run | 上述两者下游：重试耗尽 → recovery hold |
+| 代码已提交但 API 行为仍是旧逻辑（health.commit 却显示新 HEAD） | 运行进程是旧的：health.commit 实时读 HEAD 不证明版本；按规则 6 查进程启动时间并显式重启 |
+| 改了 adapter 模型目录但 API 仍返回旧列表 | declared models（PILIBALA_ADAPTER_MODELS）覆盖动态发现，或 60s 发现缓存未过期 |
