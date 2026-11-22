@@ -34,6 +34,34 @@ describe("pi models", () => {
     ).rejects.toThrow();
   });
 
+  // AMB-326 regression baseline: the default-connection model id must stay
+  // registry-qualified (`<provider>/<model>`, slash intact even when the model
+  // id itself carries a vendor prefix) and the label must be the bare id —
+  // the CLI's inference-parameter columns (context/max-out/thinking/images)
+  // must not ride along in the model name.
+  it("keeps nvidia vendor-prefixed ids intact and drops parameter columns from the label", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pilibala-pi-models-"));
+    const command = join(directory, "pi");
+    await writeFile(
+      command,
+      "#!/bin/sh\n"
+      + "printf 'provider  model  context  max-out  thinking  images\\n'\n"
+      + "printf 'nvidia  minimaxai/minimax-m3.1-flash  196k  100k  yes  no\\n'\n"
+      + "printf 'nvidia  z-ai/glm-5.3-flash  200k  128k  yes  yes\\n'\n",
+    );
+    await chmod(command, 0o755);
+    process.env.PILIBALA_PI_COMMAND = command;
+
+    try {
+      await expect(listPiModels()).resolves.toEqual([
+        { id: "nvidia/minimaxai/minimax-m3.1-flash", label: "nvidia/minimaxai/minimax-m3.1-flash" },
+        { id: "nvidia/z-ai/glm-5.3-flash", label: "nvidia/z-ai/glm-5.3-flash" },
+      ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("does not embed the model catalogue when the configured model is unavailable", async () => {
     const directory = await mkdtemp(join(tmpdir(), "pilibala-pi-models-"));
     const command = join(directory, "pi");
