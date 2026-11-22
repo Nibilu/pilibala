@@ -21,8 +21,11 @@ description: >
    - 合并收尾由编排者在 run 结束后执行；若 run 必须自己收尾：**先写状态+评论
      （持久化），merge 放最后一步**，并接受 merge 即自毁
 
-2. **merge 前检查谱系一致性。**
-   目标分支必须包含本地关键补丁。已知关键补丁：
+2. **merge 目标必须是 clip_fork，且 merge 前先把 clip_fork fast-forward 到 dev 线最新。**
+   主分支唯一：clip_fork。禁止把工作 merge 到主 checkout 顺手所在的其它分支（那是 AMB-323
+   剪线事故的直接成因）。流程：`git fetch origin` → 确认 clip_fork 已含 dev 线全部提交
+   （或先把 dev 线 FF 进 clip_fork）→ 再把任务分支 merge 进 clip_fork。
+   同时 merge 前检查谱系一致性：目标分支必须包含本地关键补丁。已知关键补丁：
    - `packages/adapters/pi-local/src/server/pi-command.ts`（pi CLI 解析的
      `~/.pi/agent/bin/pi` managed-home 回退；源自 dafe66d7b1 / AMB-311）
    - 校验：`git merge-base --is-ancestor <补丁commit> <目标HEAD>`
@@ -31,6 +34,8 @@ description: >
 3. **merge 后必做验证，不通过不算发布。**
    - `curl -fsS http://127.0.0.1:3104/api/health`：`commit` == 新 HEAD 且
      `bootstrapStatus: ready`
+   - 四方对齐：clip_fork == origin/clip_fork == 主 checkout HEAD == health.commit
+     （巡检脚本：/home/amber/.local/bin/pilibala-dev-alignment-check；push 后复查）
    - pi_local 自检：对目标 agent 跑 capability-check 或一次试运行，确认无
      `Command not found in PATH: "pi"`
    - UI 改动：`pnpm --filter @pilibalaai/ui build` → 比对 served bundle hash
