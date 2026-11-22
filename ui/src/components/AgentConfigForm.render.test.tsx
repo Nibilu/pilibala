@@ -4846,6 +4846,64 @@ describe("AgentConfigForm model provider catalog", () => {
     expect(mockAgentsApi.detectModel).toHaveBeenCalledWith("company-1", "hermes_local");
   });
 
+  // AMB-326 regression (restored from 2f421f725cb, dropped by 395aa2de66):
+  // hermes_local model discovery must be scoped to the provider the user
+  // picks. With the fallback the query stays unscoped, the list never reacts
+  // to a provider change, and the saved agent defers to the host config.
+  it("re-scopes Hermes model discovery when the provider selection changes", async () => {
+    mockAgentsApi.adapterProviders.mockResolvedValue([
+      { name: "openrouter", label: "OpenRouter", envVars: [], fallbackModels: [] },
+      { name: "zai", label: "Z.AI", envVars: [], fallbackModels: [] },
+    ]);
+    const result = await renderForm([], {
+      adapterType: "hermes_local",
+      adapterConfig: { provider: "openrouter", model: "qwen3-coder" },
+    });
+    roots.push(result.root);
+    const select = await waitForProviderSelector(result.container);
+    expect(select).not.toBeNull();
+    expect(select!.value).toBe("openrouter");
+    // The model catalog is queried for the configured provider — not unscoped.
+    await flushUntil(() =>
+      mockAgentsApi.adapterModels.mock.calls.some((call) => call[2]?.provider === "openrouter"));
+    expect(mockAgentsApi.adapterModels).toHaveBeenCalledWith(
+      "company-1",
+      "hermes_local",
+      expect.objectContaining({ provider: "openrouter" }),
+    );
+
+    await selectProviderOption(select!, "zai");
+    await flushUntil(() =>
+      mockAgentsApi.adapterModels.mock.calls.some((call) => call[2]?.provider === "zai"));
+    expect(mockAgentsApi.adapterModels).toHaveBeenLastCalledWith(
+      "company-1",
+      "hermes_local",
+      expect.objectContaining({ provider: "zai" }),
+    );
+    await clickByText(result.container, "Save");
+    const payload = result.onSave.mock.calls[0][0];
+    expect(payload.adapterConfig).toMatchObject({ provider: "zai" });
+  });
+
+  it("scopes Hermes default-path model discovery to the detected host provider", async () => {
+    mockAgentsApi.adapterProviders.mockResolvedValue([
+      { name: "openrouter", label: "OpenRouter", envVars: [], fallbackModels: [] },
+    ]);
+    mockAgentsApi.detectModel.mockResolvedValue({ provider: "nvidia", model: "m1", source: "config" });
+    const result = await renderForm([], { adapterType: "hermes_local", adapterConfig: {} });
+    roots.push(result.root);
+    const select = await waitForProviderSelector(result.container);
+    expect(select).not.toBeNull();
+    expect(select!.value).toBe("");
+    await flushUntil(() =>
+      mockAgentsApi.adapterModels.mock.calls.some((call) => call[2]?.provider === "nvidia"));
+    expect(mockAgentsApi.adapterModels).toHaveBeenCalledWith(
+      "company-1",
+      "hermes_local",
+      expect.objectContaining({ provider: "nvidia" }),
+    );
+  });
+
   // The form render path in this file mocks "@/adapters" with a stand-in
   // ConfigFields, so the hiddenKeys wiring cannot be observed through the
   // form. These two tests mount the real SchemaConfigFields (deep import,

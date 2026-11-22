@@ -1069,7 +1069,17 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const usesManagedConnection = Boolean(runtimeAiBinding);
   // Managed AI connections route the model themselves: their provider wins over
   // the adapter catalog so discovery and refresh keep the connection's catalog.
-  const modelProvider = adapterType === "opencode_local" && aiConnectionBindingSchema.safeParse(effectiveAiConnectionRaw).data?.provider === "openrouter" ? "openrouter" : runnerProvider;
+  // hermes_local: scope model discovery to the effective provider selection
+  // (the unsaved catalog pick, else the host Hermes config's detected provider
+  // behind "Default"). Without this the query stays unscoped no matter which
+  // provider the user picks, so the model list never reacts and the saved agent
+  // defers to the host config — the 395aa2de66 regression, restored from
+  // 2f421f725cb (see AMB-326).
+  const modelProvider = adapterType === "opencode_local" && aiConnectionBindingSchema.safeParse(effectiveAiConnectionRaw).data?.provider === "openrouter"
+    ? "openrouter"
+    : adapterType === "hermes_local"
+      ? (selectedModelProvider || detectedHermesModel.data?.provider || undefined)
+      : runnerProvider;
   const runnerAcpxAgent = adapterType === "pilibala_runner" && runnerProvider === "acpx"
     ? String(isCreate ? props.values.adapterSchemaValues?.acpxAgent ?? "claude" : eff("adapterConfig", "acpxAgent", config.acpxAgent ?? "claude")) : undefined;
   const modelAiBinding = aiConnectionBindingSchema.safeParse(effectiveAiConnectionRaw).data;
