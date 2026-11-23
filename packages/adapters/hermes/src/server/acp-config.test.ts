@@ -33,21 +33,30 @@ describe("buildHermesAcpConfig provider↔model transport guard", () => {
     ).toBe("deepseek-ai/deepseek-v4.1-flash");
   });
 
-  // AMB-326 T0: a config.yaml custom_providers gateway is not in Hermes's
-  // `_KNOWN_PROVIDER_NAMES`, so `<name>:<model>` rides the transport undecoded.
-  // Hermes's decodable form for those is `custom:<name>:<model>`.
-  test("qualifies a custom provider through the decodable custom:<name>:<model> form", () => {
+  // AMB-326 T0: a user-defined gateway (config.yaml `custom_providers` or the
+  // keyed `providers:` block) is not in Hermes's `_KNOWN_PROVIDER_NAMES`, so
+  // `<name>:<model>` rides the transport undecoded. Hermes's decodable form for
+  // those is `custom:<identity>:<model>` (custom_provider_slug).
+  test("qualifies a custom provider through the decodable custom:<identity>:<model> form", () => {
     const config = buildHermesAcpConfig(
       { provider: "proxy-router", model: "qwen2.5-72b-instruct" },
-      new Set(["proxy-router"]),
+      new Map([["proxy-router", "custom:proxy-router"]]),
     );
     expect(config.model).toBe("custom:proxy-router:qwen2.5-72b-instruct");
+  });
+
+  test("anchors a keyed providers: entry to its config key, not the display name", () => {
+    const config = buildHermesAcpConfig(
+      { provider: "My Proxy", model: "qwen2.5-72b-instruct" },
+      new Map([["my proxy", "custom:my-proxy-key"]]),
+    );
+    expect(config.model).toBe("custom:my-proxy-key:qwen2.5-72b-instruct");
   });
 
   test("does not double-prefix an already custom-qualified id", () => {
     const config = buildHermesAcpConfig(
       { provider: "proxy-router", model: "custom:proxy-router:qwen2.5-72b-instruct" },
-      new Set(["proxy-router"]),
+      new Map([["proxy-router", "custom:proxy-router"]]),
     );
     expect(config.model).toBe("custom:proxy-router:qwen2.5-72b-instruct");
   });

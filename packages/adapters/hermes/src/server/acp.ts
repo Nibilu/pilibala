@@ -118,26 +118,34 @@ function firstNonEmptyString(...values: unknown[]): string | undefined {
 }
 
 /**
- * The custom-provider name set feeds the transport qualification: a config.yaml
- * `custom_providers` gateway must ride the `custom:<name>:<model>` form (see
- * buildHermesAcpConfig). Discovery is 60s-cached and degrades open — a failure
- * yields an empty set and the registry colon form, never a run failure.
+ * The custom-provider identity map feeds the transport qualification: a
+ * user-defined gateway (config.yaml `custom_providers` or the keyed
+ * `providers:` block) must ride the `custom:<identity>:<model>` form (see
+ * buildHermesAcpConfig). Keyed entries may carry an identity that differs
+ * from their display name. Discovery is 60s-cached and degrades open — a
+ * failure yields an empty map and the registry colon form, never a run
+ * failure.
  */
-async function hermesCustomProviderNames(): Promise<ReadonlySet<string>> {
+async function hermesCustomProviderIdentities(): Promise<ReadonlyMap<string, string>> {
   try {
     const { listHermesProviders } = await import("./providers.js");
     const entries = await listHermesProviders();
-    return new Set(
-      entries.filter((entry) => entry.origin === "custom").map((entry) => entry.name.toLowerCase()),
-    );
+    const identities = new Map<string, string>();
+    for (const entry of entries) {
+      if (entry.origin !== "custom") continue;
+      const identity = entry.customIdentity
+        ?? `custom:${entry.name.toLowerCase().replace(/ /g, "-")}`;
+      identities.set(entry.name.toLowerCase(), identity);
+    }
+    return identities;
   } catch {
-    return new Set();
+    return new Map();
   }
 }
 
 export function buildHermesAcpConfig(
   config: Record<string, unknown>,
-  customProviderNames?: ReadonlySet<string>,
+  customProviderIdentities?: ReadonlyMap<string, string>,
 ): Record<string, unknown> {
   // acpx has no built-in "hermes" agent entry: an unset agentCommand would make
   // its registry fall back to spawning the bare `hermes` CLI (a TTY REPL whose
@@ -206,13 +214,15 @@ export function buildHermesAcpConfig(
       qualifiedModel = `custom:${model.slice(provider.length + 1)}`;
   } else if (!managedRoute && provider && provider !== "auto" && model && !model.startsWith(`${provider}:`)) {
     // Hermes's parse_model_input only decodes `<known-provider>:model` when the
-    // left side is in its built-in registry. A user-defined gateway from
-    // config.yaml `custom_providers` is NOT a known name — its decodable form
-    // is `custom:<name>:<model>` (hermes_cli _configured_custom_provider_ids),
-    // so `<name>:<model>` would ride the transport undecoded (whole string as
-    // the model) and mis-resolve (AMB-326 T0).
-    if (customProviderNames?.has(provider.toLowerCase())) {
-      if (!model.startsWith("custom:")) qualifiedModel = `custom:${provider}:${model}`;
+    // left side is in its built-in registry. A user-defined gateway (config.yaml
+    // `custom_providers` or the keyed `providers:` block) is NOT a known name —
+    // its decodable form is `custom:<identity>:<model>` (hermes_cli
+    // _configured_custom_provider_ids / custom_provider_slug), so
+    // `<name>:<model>` would ride the transport undecoded (whole string as the
+    // model) and mis-resolve (AMB-326 T0).
+    const customIdentity = customProviderIdentities?.get(provider.toLowerCase());
+    if (customIdentity) {
+      if (!model.startsWith("custom:")) qualifiedModel = `${customIdentity}:${model}`;
     } else {
       qualifiedModel = `${provider}:${model}`;
     }
@@ -265,7 +275,7 @@ export function createHermesAcpExecutor(options: HermesAcpExecutorOptions = {}):
     }
     return currentExecutor({
       ...ctx,
-      config: buildHermesAcpConfig(ctx.config, await hermesCustomProviderNames()),
+      config: buildHermesAcpConfig(ctx.config, await hermesCustomProviderIdentities()),
     });
   };
 }

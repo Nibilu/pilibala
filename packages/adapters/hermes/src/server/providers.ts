@@ -43,6 +43,14 @@ export interface HermesProviderEntry {
    * qualification (acp.ts) keys on this.
    */
   origin: "registry" | "custom";
+  /**
+   * Routable Hermes identity for custom gateways only (`custom:<key-or-name>`,
+   * per hermes_cli `custom_provider_slug`): keyed `providers:` entries use
+   * their config key, legacy `custom_providers:` entries use the normalized
+   * display name. The transport qualification (acp.ts) must anchor the model
+   * to THIS id — `<name>:<model>` is not decodable for custom gateways.
+   */
+  customIdentity?: string;
 }
 
 export interface HermesModelListResult {
@@ -120,10 +128,95 @@ for p in list_providers():
         "fallbackModels": [m for m in (getattr(p, "fallback_models", ()) or ()) if isinstance(m, str)],
         "origin": "registry",
     })
+def _pilibala_custom_blocks_fallback(path):
+    """No yaml module available (the Hermes interpreter sometimes ships
+    without PyYAML/ruamel): a targeted indentation reader for just the two
+    user-defined gateway layouts — the 'custom_providers' list and the
+    'providers' mapping. Handles plain/quoted scalars, '#' comments, and
+    one nested 'models' level (mapping or list), reduced to model ids.
+    Unparseable lines are skipped — the merge degrades to fewer entries,
+    never a failure."""
+    custom_providers = []
+    providers = {}
+    mode = None
+    entry = None
+    entry_indent = -1
+    field = None
+    field_indent = -1
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = handle.read().replace("\\uFEFF", "").split("\\n")
+    except Exception:
+        return {"custom_providers": custom_providers, "providers": providers}
+    for line in raw:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if indent == 0 and not (mode is not None and stripped.startswith("- ")):
+            # A "- " item at the parent key's own indent is legal YAML (block
+            # sequence at the same level as its key) — it belongs to the
+            # current block, not a new top-level section.
+            head = stripped.split(":", 1)[0].strip()
+            mode = head if (stripped.endswith(":") and head in ("custom_providers", "providers")) else None
+            entry, entry_indent, field, field_indent = None, -1, None, -1
+            continue
+        if mode is None:
+            continue
+        if field is not None and indent > field_indent and entry is not None:
+            # Nested keys under the 'models' mapping (or list items) — only
+            # the model ids matter; normalize both shapes to a list.
+            if field == "models":
+                item = stripped[2:].strip() if stripped.startswith("- ") else stripped.split(":", 1)[0].strip()
+                if item:
+                    entry.setdefault("models", []).append(item.strip("'\\\" "))
+            continue
+        if field is not None and indent <= field_indent:
+            field, field_indent = None, -1
+        if stripped.startswith("- ") and (entry is None or indent <= entry_indent):
+            entry = {}
+            entry_indent = indent
+            if mode == "custom_providers":
+                custom_providers.append(entry)
+            stripped = stripped[2:].strip()
+            if not stripped or ":" not in stripped:
+                entry = None
+                continue
+        if ":" not in stripped:
+            continue
+        key = stripped.split(":", 1)[0].strip()
+        value = stripped.split(":", 1)[1]
+        if mode == "providers" and entry is None and stripped.endswith(":"):
+            entry = {}
+            entry_indent = indent
+            providers[key] = entry
+            continue
+        if entry is None:
+            continue
+        if value.strip() == "" or value.strip().startswith("#"):
+            field, field_indent = key, indent
+            if key == "models":
+                entry.setdefault("models", [])
+            continue
+        val = value.split(" #", 1)[0].strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+            val = val[1:-1]
+        entry[key] = val
+    return {"custom_providers": custom_providers, "providers": providers}
+
+cfg = None
 try:
     import yaml
     with open("/home/amber/.hermes/config.yaml", "r", encoding="utf-8") as handle:
         cfg = yaml.safe_load(handle) or {}
+except Exception as exc:
+    sys.stderr.write("[pilibala-providers] yaml unavailable (%s); using the targeted fallback reader\\n" % exc)
+    cfg = None
+if cfg is None:
+    cfg = _pilibala_custom_blocks_fallback("/home/amber/.hermes/config.yaml")
+if not isinstance(cfg, dict):
+    cfg = {}
+try:
     known = {e["name"].lower() for e in out}
     for cp in (cfg.get("custom_providers") or []):
         if not isinstance(cp, dict):
@@ -140,10 +233,35 @@ try:
             "envVars": [str(cp["key_env"])] if cp.get("key_env") else [],
             "fallbackModels": cmodels,
             "origin": "custom",
+            "customIdentity": "custom:" + cname.lower().replace(" ", "-"),
         })
         known.add(cname.lower())
-except Exception:
-    pass
+    # The modern 'providers:' dict block is the second user-defined layout
+    # Hermes routes (hermes_cli _configured_custom_provider_ids reads both).
+    # Keyed entries take their config key as the routable identity
+    # (custom_provider_slug: "keyed providers: entries use their config key"),
+    # so the identity can differ from the display name.
+    for pkey, pentry in ((cfg.get("providers") or {}).items()
+                         if isinstance(cfg.get("providers"), dict) else []):
+        if not isinstance(pentry, dict):
+            continue
+        pname = str(pentry.get("name") or pkey).strip()
+        pbase = str(pentry.get("base_url") or "").strip()
+        if not pname or not pbase or pname.lower() in known:
+            continue
+        raw_models = pentry.get("models")
+        pmodels = [str(m) for m in (raw_models.keys() if isinstance(raw_models, dict) else (raw_models or []))]
+        out.append({
+            "name": pname,
+            "baseUrl": pbase,
+            "envVars": [str(pentry["key_env"])] if pentry.get("key_env") else [],
+            "fallbackModels": pmodels,
+            "origin": "custom",
+            "customIdentity": "custom:" + str(pkey or pname).strip().lower().replace(" ", "-"),
+        })
+        known.add(pname.lower())
+except Exception as exc:
+    sys.stderr.write("[pilibala-providers] custom-provider merge failed: %s\\n" % exc)
 print(json.dumps(out))
 `;
   let lastError: unknown = null;
