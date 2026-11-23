@@ -4904,6 +4904,53 @@ describe("AgentConfigForm model provider catalog", () => {
     );
   });
 
+  // AMB-326 T0: picking a model from the provider-scoped catalog while
+  // "Default (Hermes config)" is selected must pin the provider. Without the
+  // pin the saved orphan pair (model without provider) mis-routes at run time:
+  // Hermes keeps a slash-form id whole and falls back to its host provider.
+  it("pins the scoped provider when a catalog model is picked on the Hermes default path", async () => {
+    mockAgentsApi.adapterProviders.mockResolvedValue([
+      { name: "nvidia", label: "NVIDIA", envVars: [], fallbackModels: [] },
+    ]);
+    mockAgentsApi.detectModel.mockResolvedValue({
+      provider: "nvidia", model: "minimaxai/minimax-m3.1-flash", source: "config",
+    });
+    mockAgentsApi.adapterModels.mockResolvedValue([
+      { id: "minimaxai/minimax-m3.1-flash", label: "minimaxai/minimax-m3.1-flash" },
+      { id: "deepseek-ai/deepseek-v4.1-flash", label: "deepseek-ai/deepseek-v4.1-flash" },
+    ]);
+    const result = await renderForm([], { adapterType: "hermes_local", adapterConfig: {} });
+    roots.push(result.root);
+    await waitForProviderSelector(result.container);
+    await flushUntil(() =>
+      mockAgentsApi.adapterModels.mock.calls.some((call) => call[2]?.provider === "nvidia"));
+
+    // Open the model dropdown and pick a model that is NOT the host default.
+    const trigger = Array.from(result.container.querySelectorAll("button")).find(
+      (button) => {
+        const text = button.textContent?.trim() ?? "";
+        return text === "Default" || text.includes("minimaxai/minimax-m3.1-flash");
+      },
+    );
+    expect(trigger).toBeTruthy();
+    await clickElement(trigger);
+    const option = await vi.waitFor(() => {
+      const found = Array.from(document.body.querySelectorAll("button")).find(
+        (button) => button.textContent?.trim() === "deepseek-ai/deepseek-v4.1-flash",
+      );
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    await clickElement(option);
+    await clickByText(result.container, "Save");
+    expect(result.onSave).toHaveBeenCalledWith(expect.objectContaining({
+      adapterConfig: expect.objectContaining({
+        provider: "nvidia",
+        model: "deepseek-ai/deepseek-v4.1-flash",
+      }),
+    }));
+  });
+
   // The form render path in this file mocks "@/adapters" with a stand-in
   // ConfigFields, so the hiddenKeys wiring cannot be observed through the
   // form. These two tests mount the real SchemaConfigFields (deep import,

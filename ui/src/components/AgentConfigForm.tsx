@@ -2115,6 +2115,23 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                     });
                     return;
                   }
+                  // Picking a model from a provider-scoped catalog while
+                  // "Default (Hermes config)" is selected would persist an
+                  // orphan pair: Hermes keeps a slash-form id whole and
+                  // resolves it against whatever provider its host state
+                  // holds, so the run mis-routes (AMB-326 T0). Pin the
+                  // provider the catalog was scoped to. The untouched
+                  // host-default pair (no pick) keeps its Default semantics.
+                  if (
+                    adapterType === "hermes_local"
+                    && !usesManagedConnection
+                    && !selectedModelProvider
+                    && modelProvider
+                    && modelProvider !== "auto"
+                    && (resolvedId || rawId)
+                  ) {
+                    mark("adapterConfig", "provider", modelProvider);
+                  }
                   mark("adapterConfig", "model", resolvedId || rawId || undefined);
                   if (clearUnsupportedEffort) {
                     for (const key of ["modelReasoningEffort", "reasoningEffort", "effort"]) mark("adapterConfig", key, undefined);
