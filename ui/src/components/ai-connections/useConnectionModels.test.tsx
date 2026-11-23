@@ -79,6 +79,25 @@ it("does not reuse public OpenRouter models after switching to a custom gateway"
   expect(result?.refreshModels).toBeTypeOf("function");
 });
 
+// AMB-326 P2: a gateway catalog lists ids from many vendor namespaces; the
+// provider set is EMPTY — the connection's provider field names the account
+// type (an "openai"-type connection may be an nvidia NIM gateway) and the id
+// prefixes are vendor namespaces, so no provider filter/lock row renders and
+// the whole directory stays reachable through search.
+it("carries no provider dimension for a gateway connection's directory", async () => {
+  const nvidia: AiManagedConnectionSummary = {
+    ...account, id: "nvidia", grantId: "nvidia-grant", provider: "openai",
+    routing: { kind: "gateway", protocol: "chat", auth: "bearer", baseUrl: "https://integrate.api.nvidia.com/v1", models: [
+      { id: "minimaxai/minimax-m3.1-flash" },
+      { id: "z-ai/glm-5.3-flash" },
+      { id: "google/gemma-3-12b-it" },
+    ] },
+  };
+  await mount([nvidia], "hermes_local", { provider: "openai", method: "api_key", mode: "shared", connectionId: nvidia.id, grantId: nvidia.grantId });
+  await vi.waitFor(() => expect(result?.models).toHaveLength(3));
+  expect(result?.providers).toEqual([]);
+});
+
 it("leaves native model discovery alone", async () => {
   await mount([], "codex_local", { provider: "openai", method: "subscription", mode: "responsible_user" });
   expect(result).toBeUndefined();

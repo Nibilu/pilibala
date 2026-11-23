@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, SelectPopover } from "@/components/ui/select";
 import { cn } from "../lib/utils";
 import { extractModelName, extractProviderId } from "../lib/model-utils";
+import { groupModelsByProvider, type ModelAttributionContext } from "../lib/model-selection";
 import { Field, help } from "./agent-config-primitives";
 
 export function ModelDropdown({
@@ -18,6 +19,7 @@ export function ModelDropdown({
   required,
   groupByProvider,
   preserveOrder,
+  providerAttribution,
   creatable,
   detectedModel,
   detectedModelCandidates,
@@ -40,6 +42,13 @@ export function ModelDropdown({
   groupByProvider: boolean;
   /** Keep the adapter's list order (curated lists) instead of sorting ungrouped entries by id. */
   preserveOrder?: boolean;
+  /**
+   * Provider attribution for the grouping (AMB-326 P2): connection-attributed
+   * catalogs (gateway/local managed connections) group every entry under the
+   * connection's own provider instead of the id's vendor-prefix segment.
+   * Absent = unscoped adapter catalog — the id prefix stays the attribution.
+   */
+  providerAttribution?: ModelAttributionContext;
   creatable?: boolean;
   detectedModel?: string | null;
   detectedModelCandidates?: string[];
@@ -92,20 +101,12 @@ export function ModelDropdown({
       const entries = preserveOrder ? filteredModels : [...filteredModels].sort((a, b) => a.id.localeCompare(b.id));
       return [{ provider: "models", entries }];
     }
-    const map = new Map<string, AdapterModel[]>();
-    for (const model of filteredModels) {
-      const provider = extractProviderId(model.id) ?? "other";
-      const group = map.get(provider) ?? [];
-      group.push(model);
-      map.set(provider, group);
-    }
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([provider, entries]) => ({
-        provider,
-        entries: [...entries].sort((a, b) => a.id.localeCompare(b.id)),
-      }));
-  }, [filteredModels, groupByProvider, preserveOrder]);
+    // Attribution goes through the shared model-selection core: unscoped
+    // adapter catalogs keep the id-prefix derivation; a caller passing
+    // connection attribution groups every entry under the connection's own
+    // provider (AMB-326 P2).
+    return groupModelsByProvider(filteredModels, providerAttribution ?? {}, { preserveOrder });
+  }, [filteredModels, groupByProvider, preserveOrder, providerAttribution]);
 
   async function handleDetectModel() {
     if (!onDetectModel) return;

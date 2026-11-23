@@ -5,6 +5,7 @@ import { aiConnectionsApi } from "@/api/ai-connections";
 import { agentsApi } from "@/api/agents";
 import { useQueryView } from "@/components/QueryView";
 import { queryKeys } from "@/lib/queryKeys";
+import { deriveCatalogProviders, resolveCatalogRoutingKind } from "@/lib/model-selection";
 
 export function useConnectionModelsState(
   companyId: string | null | undefined,
@@ -73,16 +74,17 @@ export function useConnectionModelsState(
         label: m.label ?? m.id,
       }))
     : [];
-  // Providers a connection can serve, derived from its own catalog: the id
-  // prefix of "provider/model" entries (gateway/live catalogs are
-  // provider-prefixed). A single-provider connection yields one entry and the
-  // UI locks the provider to it; multi-provider connections offer the set.
-  const providerSet = new Set<string>();
-  for (const model of resolvedModels) {
-    const separator = model.id.indexOf("/");
-    if (separator > 0) providerSet.add(model.id.slice(0, separator));
-  }
-  const providers = [...providerSet].sort();
+  // Providers a connection can serve. Connection-attributed routing (gateway/
+  // local/bedrock) locks the set to the connection's own provider — its
+  // catalog lists ids from many vendor namespaces and the id prefix is NOT the
+  // serving provider (an nvidia gateway serves "minimaxai/*", "z-ai/*";
+  // AMB-326 P2). Prefix-derived catalogs (openrouter, and the unscoped
+  // fallback) keep the first-segment derivation.
+  const routingKind = resolveCatalogRoutingKind(effectiveRouting, binding);
+  const providers = deriveCatalogProviders(resolvedModels, {
+    routingKind,
+    connectionProvider: connection?.provider,
+  });
   const connectionModels = effectiveRouting
     ? {
         models: resolvedModels,
@@ -97,6 +99,7 @@ export function useConnectionModelsState(
     : undefined;
   return {
     connectionModels,
+    routingKind,
     /** Deterministic "directory not resolved yet" flag (unlike isLoading, it does not flicker false on the first frame). */
     pending: accounts.isPending,
     loading: accounts.isLoading,
