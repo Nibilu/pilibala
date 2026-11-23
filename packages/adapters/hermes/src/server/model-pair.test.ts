@@ -29,6 +29,46 @@ describe("validateHermesAdapterConfig (provider↔model live pair guard)", () =>
     ).resolves.toBeUndefined();
   });
 
+  // AMB-326 T0 default-path invariant: with no provider, only the host's own
+  // default model can resolve (Hermes keeps a slash-form id whole and falls
+  // back to its current provider). Anything else is an orphan and must be
+  // rejected at the write boundary instead of mis-routing at run time.
+  test("rejects an orphan model saved without a provider", async () => {
+    await expect(
+      validateHermesAdapterConfig(
+        { model: "minimaxai/minimax-m3.1-flash" },
+        {
+          ...depsWith({}),
+          detectModel: async () => ({ model: "deepseek-ai/deepseek-v4.1-flash" }),
+        },
+      ),
+    ).rejects.toThrow(/without a provider.*host default model "deepseek-ai\/deepseek-v4.1-flash"/s);
+  });
+
+  test("keeps the host-default model allowed without a provider", async () => {
+    await expect(
+      validateHermesAdapterConfig(
+        { model: "deepseek-ai/deepseek-v4.1-flash" },
+        {
+          ...depsWith({}),
+          detectModel: async () => ({ model: "deepseek-ai/deepseek-v4.1-flash" }),
+        },
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  test("degrades open when the host model cannot be detected", async () => {
+    await expect(
+      validateHermesAdapterConfig(
+        { model: "minimaxai/minimax-m3.1-flash" },
+        {
+          ...depsWith({}),
+          detectModel: async () => null,
+        },
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   test("rejects a model the provider's live catalog does not serve", async () => {
     await expect(
       validateHermesAdapterConfig(
@@ -76,13 +116,24 @@ describe("validateHermesAdapterConfig (provider↔model live pair guard)", () =>
   });
 
   test("model-only / provider-only / auto configs are not a pair — no-op (host-default path stays legal)", async () => {
+    const deps = {
+      ...depsWith({}),
+      // AMB-326 T0: the orphan guard needs the host's detected default. With
+      // it injected, the host-default path stays legal and other model-only
+      // configs are rejected instead of mis-routing at run time.
+      detectModel: async () => ({ model: "deepseek-ai/deepseek-v4.1-flash" }),
+    };
     for (const config of [
       { model: "deepseek-ai/deepseek-v4.1-flash" },
       { provider: "nvidia" },
       { provider: "auto", model: "anything" },
       {},
     ]) {
-      await expect(validateHermesAdapterConfig(config, depsWith({}))).resolves.toBeUndefined();
+      await expect(validateHermesAdapterConfig(config, deps)).resolves.toBeUndefined();
     }
+    // A model-only config that is NOT the host default is an orphan now.
+    await expect(
+      validateHermesAdapterConfig({ model: "z-ai/glm-5.3-flash" }, deps),
+    ).rejects.toThrow(/without a provider/);
   });
 });

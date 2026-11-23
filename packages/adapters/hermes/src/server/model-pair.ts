@@ -35,6 +35,7 @@ export interface HermesModelListResultLike {
 export interface HermesModelPairDeps {
   listProviders?: () => Promise<HermesProviderEntryLike[]>;
   listProviderModels?: (provider: string) => Promise<HermesModelListResultLike>;
+  detectModel?: () => Promise<{ model: string } | null>;
 }
 
 function configString(value: unknown): string {
@@ -47,11 +48,34 @@ export async function validateHermesAdapterConfig(
 ): Promise<void> {
   const provider = configString(config.provider);
   const model = configString(config.model);
+  if (provider === "auto") return;
+
+  // Default-path invariant: with no explicit provider the ONLY model Hermes
+  // can resolve is the host config's own default. Hermes keeps a slash-form
+  // model id whole (hermes_cli parse_model_input never splits on "/") and
+  // falls back to whatever provider its host state holds, so an orphan model
+  // — provider empty, model ≠ host default — silently mis-routes to the wrong
+  // endpoint and 404s (AMB-326 T0). Reject the orphan at the write boundary
+  // instead of mis-routing at run time.
+  if (!provider && model) {
+    const detected = deps.detectModel
+      ? await deps.detectModel().catch(() => null)
+      : await import("./detect-model.js")
+          .then((m) => m.detectModel())
+          .catch(() => null);
+    if (detected?.model && model !== detected.model) {
+      throw new Error(
+        `Model "${model}" is set without a provider. With "Default (Hermes config)" only the host default model "${detected.model}" can resolve — pick the model's provider in the setup catalog, or clear the model to follow the host default.`,
+      );
+    }
+    return;
+  }
+
   // A pair is only enforceable when BOTH sides are explicit. Model-only (or
   // provider-only) configs delegate to Hermes's own native resolution of its
   // host default — Pilibala must not guess, and must not block the
   // "Default (Hermes config)" setup path.
-  if (!provider || !model || provider === "auto") return;
+  if (!provider || !model) return;
 
   const listProviders = deps.listProviders ?? (async () => {
     const { listHermesProviders } = await import("./providers.js");

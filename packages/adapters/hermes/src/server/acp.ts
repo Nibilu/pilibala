@@ -117,7 +117,28 @@ function firstNonEmptyString(...values: unknown[]): string | undefined {
   return undefined;
 }
 
-export function buildHermesAcpConfig(config: Record<string, unknown>): Record<string, unknown> {
+/**
+ * The custom-provider name set feeds the transport qualification: a config.yaml
+ * `custom_providers` gateway must ride the `custom:<name>:<model>` form (see
+ * buildHermesAcpConfig). Discovery is 60s-cached and degrades open — a failure
+ * yields an empty set and the registry colon form, never a run failure.
+ */
+async function hermesCustomProviderNames(): Promise<ReadonlySet<string>> {
+  try {
+    const { listHermesProviders } = await import("./providers.js");
+    const entries = await listHermesProviders();
+    return new Set(
+      entries.filter((entry) => entry.origin === "custom").map((entry) => entry.name.toLowerCase()),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+export function buildHermesAcpConfig(
+  config: Record<string, unknown>,
+  customProviderNames?: ReadonlySet<string>,
+): Record<string, unknown> {
   // acpx has no built-in "hermes" agent entry: an unset agentCommand would make
   // its registry fall back to spawning the bare `hermes` CLI (a TTY REPL whose
   // banner and warnings corrupt the ACP NDJSON stdout). The adapter therefore
@@ -184,7 +205,17 @@ export function buildHermesAcpConfig(config: Record<string, unknown>): Record<st
     else if (provider && model.startsWith(`${provider}:`))
       qualifiedModel = `custom:${model.slice(provider.length + 1)}`;
   } else if (!managedRoute && provider && provider !== "auto" && model && !model.startsWith(`${provider}:`)) {
-    qualifiedModel = `${provider}:${model}`;
+    // Hermes's parse_model_input only decodes `<known-provider>:model` when the
+    // left side is in its built-in registry. A user-defined gateway from
+    // config.yaml `custom_providers` is NOT a known name — its decodable form
+    // is `custom:<name>:<model>` (hermes_cli _configured_custom_provider_ids),
+    // so `<name>:<model>` would ride the transport undecoded (whole string as
+    // the model) and mis-resolve (AMB-326 T0).
+    if (customProviderNames?.has(provider.toLowerCase())) {
+      if (!model.startsWith("custom:")) qualifiedModel = `custom:${provider}:${model}`;
+    } else {
+      qualifiedModel = `${provider}:${model}`;
+    }
   }
 
   return {
@@ -234,7 +265,7 @@ export function createHermesAcpExecutor(options: HermesAcpExecutorOptions = {}):
     }
     return currentExecutor({
       ...ctx,
-      config: buildHermesAcpConfig(ctx.config),
+      config: buildHermesAcpConfig(ctx.config, await hermesCustomProviderNames()),
     });
   };
 }

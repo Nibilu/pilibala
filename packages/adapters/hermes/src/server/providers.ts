@@ -33,6 +33,16 @@ export interface HermesProviderEntry {
   baseUrl: string;
   envVars: string[];
   fallbackModels: string[];
+  /**
+   * Where the entry came from. "registry" = an installed Hermes provider
+   * plugin (its name is a `_KNOWN_PROVIDER_NAMES` member, so the CLI/ACP
+   * `provider:model` colon form decodes it). "custom" = a user-defined
+   * gateway from config.yaml `custom_providers` — Hermes only decodes those
+   * through the `custom:<name>:<model>` form (hermes_cli
+   * `_configured_custom_provider_ids`), never `<name>:<model>`. Transport
+   * qualification (acp.ts) keys on this.
+   */
+  origin: "registry" | "custom";
 }
 
 export interface HermesModelListResult {
@@ -108,6 +118,7 @@ for p in list_providers():
         "baseUrl": getattr(p, "base_url", "") or "",
         "envVars": [v for v in (getattr(p, "env_vars", ()) or ()) if isinstance(v, str)],
         "fallbackModels": [m for m in (getattr(p, "fallback_models", ()) or ()) if isinstance(m, str)],
+        "origin": "registry",
     })
 try:
     import yaml
@@ -128,6 +139,7 @@ try:
             "baseUrl": cbase,
             "envVars": [str(cp["key_env"])] if cp.get("key_env") else [],
             "fallbackModels": cmodels,
+            "origin": "custom",
         })
         known.add(cname.lower())
 except Exception:
