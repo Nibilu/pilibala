@@ -401,6 +401,90 @@ describe("composer assignee picker", () => {
     expect(onSettingsChange).toHaveBeenLastCalledWith({ model: "minimaxai/minimax-m3.1-flash", effort: null, fast: false });
   });
 
+  // AMB-326 P2 follow-up: keyword search narrows whatever catalog is active —
+  // a bound connection's directory or the default/harness catalog — so the
+  // user picks the current provider's model without typing the full id.
+  it("narrows the active catalog by keyword and serves the quick pick", async () => {
+    const binding = {
+      provider: "openai", method: "api_key", mode: "shared",
+      connectionId: "11111111-1111-4111-8111-111111111111",
+      grantId: "33333333-3333-4333-8333-333333333333",
+    } as const;
+    const boundAgent = { ...agent, adapterType: "hermes_local", adapterConfig: {},
+      runtimeConfig: { aiConnection: binding } } as Agent;
+    const loadModels = vi.spyOn(agentsApi, "adapterModels").mockResolvedValue([]);
+    vi.spyOn(aiConnectionsApi, "list").mockResolvedValue({
+      currentUserId: "user-1",
+      canManageConnections: true,
+      connections: [{
+        id: binding.connectionId, grantId: binding.grantId, companyId: "company-1",
+        provider: "openai", method: "api_key", name: "NVIDIA gateway",
+        ownership: "shared", isDefault: false, status: "connected",
+        routing: { kind: "gateway", protocol: "chat", auth: "bearer", models: [
+          { id: "minimaxai/minimax-m3.1-flash", label: "MiniMax M3.1 Flash" },
+          { id: "z-ai/glm-5.3-flash", label: "GLM 5.3 Flash" },
+          { id: "google/gemma-3-12b-it", label: "Gemma 3 12B" },
+        ] },
+      }],
+    });
+    const onSettingsChange = vi.fn();
+    render(vi.fn(), onSettingsChange, true, { agents: new Map([[agent.id, boundAgent]]), settings: null });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    // The bound connection's directory replaces the harness catalog fetch.
+    expect(loadModels).not.toHaveBeenCalled();
+    await click("Select model and effort");
+    await click("Choose exact model");
+    const search = document.querySelector<HTMLInputElement>('input[aria-label="Search or paste a model ID"]')!;
+    expect(search).not.toBeNull();
+    const type = async (keyword: string) => {
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+        setter.call(search, keyword);
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    };
+    const visibleOptions = () => [...document.querySelectorAll<HTMLButtonElement>('button[role="option"]')]
+      .map((item) => item.textContent ?? "");
+    // A keyword matches the id across vendor namespaces — the list shows the
+    // current provider's (the connection's) matching models only.
+    await type("glm");
+    let texts = visibleOptions();
+    expect(texts.some((t) => t.includes("GLM 5.3 Flash"))).toBe(true);
+    expect(texts.some((t) => t.includes("MiniMax M3.1 Flash"))).toBe(false);
+    expect(texts.some((t) => t.includes("Gemma 3 12B"))).toBe(false);
+    await type("minimax");
+    texts = visibleOptions();
+    expect(texts.some((t) => t.includes("MiniMax M3.1 Flash"))).toBe(true);
+    expect(texts.some((t) => t.includes("GLM 5.3 Flash"))).toBe(false);
+    // Selecting the quick pick commits the full id.
+    await click("MiniMax M3.1 Flash");
+    expect(onSettingsChange).toHaveBeenLastCalledWith({ model: "minimaxai/minimax-m3.1-flash", effort: null, fast: false });
+  });
+
+  it("narrows the default-path harness catalog by keyword too", async () => {
+    const onSettingsChange = vi.fn();
+    render(vi.fn(), onSettingsChange, false, {
+      modelOptionsOverride: [
+        { id: "minimaxai/minimax-m3.1-flash", label: "MiniMax M3.1 Flash" },
+        { id: "nvidia/z-ai/glm-5.3-flash", label: "GLM 5.3 Flash" },
+      ],
+    });
+    await click("Select model and effort");
+    await click("Choose exact model");
+    const search = document.querySelector<HTMLInputElement>('input[aria-label="Search or paste a model ID"]')!;
+    expect(search).not.toBeNull();
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(search, "z-ai");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const texts = [...document.querySelectorAll<HTMLButtonElement>('button[role="option"]')].map((item) => item.textContent ?? "");
+    // The keyword matches the attributed provider segment of the registry-
+    // qualified id — the scoped catalog's matching models only.
+    expect(texts.some((t) => t.includes("GLM 5.3 Flash"))).toBe(true);
+    expect(texts.some((t) => t.includes("MiniMax M3.1 Flash"))).toBe(false);
+  });
+
   it("falls back to the harness catalog when the bound connection resolves to nothing", async () => {
     const binding = {
       provider: "openai", method: "api_key", mode: "shared",
