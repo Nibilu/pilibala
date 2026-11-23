@@ -28,15 +28,21 @@ vi.mock("@pilibalaai/adapter-utils/server-utils", async (importOriginal) => {
 });
 
 // Mock fs and path resolution to avoid real file reads in execute()
-vi.mock("node:fs/promises", () => ({
-  readFile: vi.fn(async () => ""),
-  writeFile: vi.fn(async () => undefined),
-  mkdir: vi.fn(async () => undefined),
-  rm: vi.fn(async () => undefined),
-  access: vi.fn(async () => undefined),
-  readdir: vi.fn(async () => []),
-  stat: vi.fn(async () => ({ isFile: () => true, isDirectory: () => false })),
-}));
+vi.mock("node:fs/promises", () => {
+  const fsMock = {
+    readFile: vi.fn(async () => ""),
+    writeFile: vi.fn(async () => undefined),
+    mkdir: vi.fn(async () => undefined),
+    rm: vi.fn(async () => undefined),
+    access: vi.fn(async () => undefined),
+    readdir: vi.fn(async () => []),
+    stat: vi.fn(async () => ({ isFile: () => true, isDirectory: () => false })),
+  };
+  // execute.ts (and transitively imported modules) default-import the
+  // namespace (`import fs from "node:fs/promises"`), so the mock must expose
+  // the same surface as its default export.
+  return { ...fsMock, default: fsMock };
+});
 
 import { execute } from "./execute.js";
 import { DEFAULT_TIMEOUT_SEC, DEFAULT_GRACE_SEC } from "../shared/constants.js";
