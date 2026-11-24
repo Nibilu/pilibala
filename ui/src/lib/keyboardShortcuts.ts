@@ -60,26 +60,76 @@ export function focusPageSearchShortcutTarget(root: ParentNode = document): bool
   return true;
 }
 
+/**
+ * Some engines (Safari, and Chromium builds affected by
+ * https://issues.chromium.org/issues/418103018) deliver the keydown that
+ * confirms an IME composition only after compositionend has fired. That
+ * keydown reports `isComposing: false` even though the Enter belongs to the
+ * composition, so keydown-driven behavior must exclude it twice more: the
+ * classic IME keyCode 229, and arrival inside this grace window after the
+ * composition ended. Both checks use event timestamps so main-thread stall
+ * cannot skew the decision.
+ */
+const SEARCH_BLUR_COMPOSITION_END_GRACE_MS = 50;
+
+function isImeCompositionKeyEvent({
+  isComposing,
+  keyCode,
+  compositionEndedAt,
+  timeStamp,
+}: {
+  isComposing: boolean;
+  keyCode?: number;
+  compositionEndedAt?: number;
+  timeStamp?: number;
+}): boolean {
+  if (isComposing) return true;
+  if (keyCode === 229) return true;
+  return (
+    compositionEndedAt !== undefined
+    && timeStamp !== undefined
+    && Math.abs(timeStamp - compositionEndedAt) < SEARCH_BLUR_COMPOSITION_END_GRACE_MS
+  );
+}
+
 export function shouldBlurPageSearchOnEnter({
   key,
   isComposing,
+  keyCode,
+  compositionEndedAt,
+  timeStamp,
 }: {
   key: string;
   isComposing: boolean;
+  keyCode?: number;
+  /** Event timestamp of the most recent compositionend on the field, if any. */
+  compositionEndedAt?: number;
+  /** Event timestamp of the keydown being decided. */
+  timeStamp?: number;
 }): boolean {
-  return key === "Enter" && !isComposing;
+  if (key !== "Enter" || isComposing) return false;
+  return !isImeCompositionKeyEvent({ isComposing, keyCode, compositionEndedAt, timeStamp });
 }
 
 export function shouldBlurPageSearchOnEscape({
   key,
   isComposing,
   currentValue,
+  keyCode,
+  compositionEndedAt,
+  timeStamp,
 }: {
   key: string;
   isComposing: boolean;
   currentValue: string;
+  keyCode?: number;
+  /** Event timestamp of the most recent compositionend on the field, if any. */
+  compositionEndedAt?: number;
+  /** Event timestamp of the keydown being decided. */
+  timeStamp?: number;
 }): boolean {
-  return key === "Escape" && !isComposing && currentValue.length === 0;
+  if (key !== "Escape" || isComposing || currentValue.length > 0) return false;
+  return !isImeCompositionKeyEvent({ isComposing, keyCode, compositionEndedAt, timeStamp });
 }
 
 export function isModifierOnlyKey(key: string): boolean {

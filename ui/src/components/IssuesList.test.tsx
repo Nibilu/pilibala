@@ -1519,6 +1519,66 @@ describe("IssuesList", () => {
     });
   });
 
+  it("waits for the IME composition to end before committing the debounced search", async () => {
+    vi.useFakeTimers();
+
+    const onSearchChange = vi.fn();
+    const localIssue = createIssue({ id: "issue-local", identifier: "PAP-1", title: "Local issue" });
+
+    const { root } = renderWithQueryClient(
+      <IssuesList
+        issues={[localIssue]}
+        agents={[]}
+        projects={[]}
+        viewStateKey="paperclip:test-issues"
+        onSearchChange={onSearchChange}
+        onUpdateIssue={() => undefined}
+      />,
+      container,
+    );
+
+    const input = container.querySelector('input[aria-label="Search tasks"]') as HTMLInputElement | null;
+    expect(input).not.toBeNull();
+    const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    expect(valueSetter).toBeTypeOf("function");
+
+    act(() => {
+      input?.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    });
+    act(() => {
+      if (!input || !valueSetter) return;
+      valueSetter.call(input, "nihao");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    // Pausing mid-composition (candidate window browsing) must not fire commits
+    // with the raw pinyin.
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(onSearchChange).not.toHaveBeenCalled();
+
+    // The session commits after the user picks the final text.
+    act(() => {
+      if (!input || !valueSetter) return;
+      valueSetter.call(input, "你好");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+      await Promise.resolve();
+    });
+
+    expect(onSearchChange).toHaveBeenCalledTimes(1);
+    expect(onSearchChange).toHaveBeenCalledWith("你好");
+    expect(input?.value).toBe("你好");
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
   it("shows a refinement hint when search results hit the live search cap", async () => {
     const serverIssues = Array.from({ length: 200 }, (_, index) =>
       createIssue({
