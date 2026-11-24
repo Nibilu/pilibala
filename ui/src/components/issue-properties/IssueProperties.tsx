@@ -61,7 +61,7 @@ import {
   formatMonitorOffset,
   useMonitorCountdown,
 } from "../../lib/issue-monitor";
-import { extractProviderIdWithFallback } from "../../lib/model-utils";
+import { attributeModelProvider } from "../../lib/model-selection";
 import { formatRetryReason } from "../../lib/runRetryState";
 import { useRetryNowMutation } from "../../hooks/useRetryNowMutation";
 import { RetryErrorBand } from "../IssueScheduledRetryCard";
@@ -801,7 +801,9 @@ export function IssueProperties({
     const options = models.map((model) => ({
       id: model.id,
       label: model.label,
-      searchText: `${model.id} ${extractProviderIdWithFallback(model.id)}`,
+      // Search text carries the attributed provider segment (shared core,
+      // AMB-326 P3) so a keyword like "nvidia" finds registry-qualified ids.
+      searchText: `${model.id} ${attributeModelProvider(model.id) ?? ""}`,
     }));
     if (assigneeOverrideModel && !options.some((option) => option.id === assigneeOverrideModel)) {
       options.unshift({

@@ -1,6 +1,6 @@
 import type { AdapterModel } from "../../api/agents";
 import type { Issue, Project } from "@pilibalaai/shared";
-import { extractProviderIdWithFallback } from "../../lib/model-utils";
+import { attributeModelProvider } from "../../lib/model-selection";
 import type { IssueModelLane } from "../../lib/issue-assignee-overrides";
 import { codexReasoningEffortOptions } from "../../lib/codex-reasoning-effort";
 
@@ -114,9 +114,12 @@ export function overrideLane(overrides: Issue["assigneeAdapterOverrides"]): Issu
 }
 
 export function sortAdapterModels(models: AdapterModel[]) {
+  // Attribution goes through the shared model-selection core (AMB-326 P3):
+  // these are unscoped adapter catalogs, so the id-prefix derivation applies —
+  // identical ordering from the single source of truth.
   return [...models].sort((a, b) => {
-    const providerA = extractProviderIdWithFallback(a.id);
-    const providerB = extractProviderIdWithFallback(b.id);
+    const providerA = attributeModelProvider(a.id) ?? "other";
+    const providerB = attributeModelProvider(b.id) ?? "other";
     const byProvider = providerA.localeCompare(providerB);
     if (byProvider !== 0) return byProvider;
     return a.id.localeCompare(b.id);

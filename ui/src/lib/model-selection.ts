@@ -93,6 +93,24 @@ export interface ProviderModelGroup<T> {
 }
 
 /**
+ * Normalize a hand-entered or pasted model id to the storage (slash) form
+ * (AMB-326 P3). Some surfaces display ids in the `vendor: model` convention;
+ * a colon-form id saved into adapterConfig rides the transports undecoded
+ * (hermes `hasTransportPrefix` reads `x:` as a transport prefix → the whole
+ * string reaches the provider API → ModelRejected). A single colon after a
+ * plain segment becomes "/"; `custom:` ids are Hermes-native references and
+ * stay untouched; multi-colon ids pass through unchanged.
+ */
+export function normalizeModelEntry(input: string): string {
+  const value = input.trim().replace(/^["']|["']$/g, "").trim();
+  const match = value.match(/^([A-Za-z0-9_.-]+)\s*:\s*([^:]+)$/);
+  if (!match) return value;
+  const [, left, right] = match;
+  if (left.toLowerCase() === "custom") return value;
+  return `${left}/${right.trim()}`;
+}
+
+/**
  * Group catalog entries by their attributed provider (the ModelDropdown
  * groupByProvider view). `preserveOrder` keeps the adapter's deliberate
  * ordering inside each group; otherwise entries sort alphabetically, matching

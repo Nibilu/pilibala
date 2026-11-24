@@ -4,8 +4,30 @@ import {
   attributeModelProvider,
   deriveCatalogProviders,
   groupModelsByProvider,
+  normalizeModelEntry,
   resolveCatalogRoutingKind,
 } from "./model-selection";
+
+describe("normalizeModelEntry", () => {
+  it("converts the vendor:model display convention to the slash storage form", () => {
+    expect(normalizeModelEntry("minimaxai: minimax-m3.1-flash")).toBe("minimaxai/minimax-m3.1-flash");
+    expect(normalizeModelEntry("minimaxai:minimax-m3.1-flash")).toBe("minimaxai/minimax-m3.1-flash");
+    expect(normalizeModelEntry("  openrouter:anthropic/claude-sonnet-4.5  ")).toBe("openrouter/anthropic/claude-sonnet-4.5");
+  });
+
+  it("leaves Hermes-native custom: references and multi-colon ids untouched", () => {
+    expect(normalizeModelEntry("custom:proxy-router:qwen2.5-72b-instruct")).toBe("custom:proxy-router:qwen2.5-72b-instruct");
+    expect(normalizeModelEntry("custom:qwen")).toBe("custom:qwen");
+    expect(normalizeModelEntry("a:b:c")).toBe("a:b:c");
+  });
+
+  it("passes plain slash ids and bare names through trimmed", () => {
+    expect(normalizeModelEntry("  minimaxai/minimax-m3.1-flash  ")).toBe("minimaxai/minimax-m3.1-flash");
+    expect(normalizeModelEntry("bare-model")).toBe("bare-model");
+    expect(normalizeModelEntry(' "quoted/id" ')).toBe("quoted/id");
+    expect(normalizeModelEntry("")).toBe("");
+  });
+});
 
 describe("resolveCatalogRoutingKind", () => {
   it("prefers the connection's routing kind", () => {
