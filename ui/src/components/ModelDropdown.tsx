@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, SelectPopover } from "@/components/ui/select";
 import { cn } from "../lib/utils";
 import { extractModelName, extractProviderId } from "../lib/model-utils";
-import { groupModelsByProvider, type ModelAttributionContext } from "../lib/model-selection";
+import { groupModelsByProvider, normalizeModelEntry, type ModelAttributionContext } from "../lib/model-selection";
 import { Field, help } from "./agent-config-primitives";
 
 export function ModelDropdown({
@@ -65,7 +65,10 @@ export function ModelDropdown({
   const [enteringCustomModel, setEnteringCustomModel] = useState(false);
   const [detectingModel, setDetectingModel] = useState(false);
   const selected = models.find((m) => m.id === value);
-  const manualModel = modelSearch.trim();
+  // Hand-entered ids normalize to the storage (slash) form: a pasted
+  // "vendor: model" display convention must not persist a colon-form id that
+  // the transports misread (AMB-326 P3).
+  const manualModel = normalizeModelEntry(modelSearch);
   const canCreateManualModel = Boolean(
     creatable &&
       manualModel &&

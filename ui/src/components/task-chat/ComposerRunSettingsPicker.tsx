@@ -11,6 +11,7 @@ import {
 } from "@pilibalaai/shared";
 import { agentsApi, type AdapterModel } from "@/api/agents";
 import { useConnectionModelsState } from "@/components/ai-connections/useConnectionModels";
+import { normalizeModelEntry } from "@/lib/model-selection";
 import { queryKeys } from "@/lib/queryKeys";
 import { ACCOUNT_BOUND_MODEL_DISCOVERY_QUERY_OPTIONS, nativeTaskModelCatalogOptions } from "@/lib/native-model-catalog";
 import { cn } from "@/lib/utils";
@@ -202,6 +203,10 @@ export function ComposerRunSettingsPicker({
       .toLowerCase().includes(assigneeSearch.trim().toLowerCase());
   });
   const query = modelSearch.trim();
+  // A hand-entered/pasted id normalizes to the storage (slash) form before
+  // matching or committing: the "vendor: model" display convention must not
+  // persist a colon-form id the transports misread (AMB-326 P3).
+  const normalizedQuery = normalizeModelEntry(query);
   // Typed words match in any order against label and id (e.g. "sonnet 4" finds
   // "claude-sonnet-4-5" / "Sonnet 4.5"), the same word-wise matching the
   // settings model fields offer, and the best matches surface first.
@@ -220,12 +225,12 @@ export function ComposerRunSettingsPicker({
       .sort((left, right) => left.score - right.score || left.index - right.index)
       .map((entry) => entry.item);
   }, [models, query]);
-  const exactMatch = models.some((item) => item.id.toLowerCase() === query.toLowerCase());
+  const exactMatch = models.some((item) => item.id.toLowerCase() === normalizedQuery.toLowerCase());
   const needsProvider = agent && (["opencode_local", "pi_local", "kimi_local"].includes(agent.adapterType)
     || (agent.adapterType === "pilibala_runner" && provider === "opencode"));
-  const manualValid = query.length > 0 && !/\s/.test(query)
-    && (!needsProvider || /^[^/]+\/.+[^/]$/.test(query))
-    && (provider !== "openrouter" || /^openrouter\/[^/]+\/.+[^/]$/.test(query));
+  const manualValid = normalizedQuery.length > 0 && !/\s/.test(normalizedQuery)
+    && (!needsProvider || /^[^/]+\/.+[^/]$/.test(normalizedQuery))
+    && (provider !== "openrouter" || /^openrouter\/[^/]+\/.+[^/]$/.test(normalizedQuery));
 
   const previousAgentId = useRef(agentId);
   useEffect(() => {
@@ -318,14 +323,14 @@ export function ComposerRunSettingsPicker({
     })}{!filteredAgents.length ? <p className="px-2 py-2 text-xs text-muted-foreground">No matches.</p> : null}</div>
   </div> : <div className="composer-run-settings-list-view p-2">
     <div className="flex items-center gap-2 px-1 py-1.5"><button type="button" aria-label="Back to selection" onClick={() => setView("settings")} className="grid size-7 place-items-center rounded-md hover:bg-accent"><ArrowLeft className="size-4" /></button><span className="min-w-0 flex-1"><span className="block text-xs font-semibold">Choose model</span><span className="block truncate text-xs text-muted-foreground">{harnessLabel(agent)}</span></span>{closeButton}</div>
-    <div className="relative mt-2"><Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" aria-hidden /><input autoFocus type="search" aria-label="Search or paste a model ID" placeholder="Search or paste a model ID" value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && manualValid && !exactMatch) chooseModel(query); }} className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring" /></div>
+    <div className="relative mt-2"><Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" aria-hidden /><input autoFocus type="search" aria-label="Search or paste a model ID" placeholder="Search or paste a model ID" value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && manualValid && !exactMatch) chooseModel(normalizedQuery); }} className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring" /></div>
     <div className="mt-2 min-h-0 max-h-60 overflow-y-auto overscroll-contain touch-pan-y" role="listbox" aria-label="Models">
       {!query ? <button type="button" role="option" aria-selected={selected.model === null} onClick={() => chooseModel(null)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-accent"><span className="min-w-0 flex-1"><span className="block text-sm font-medium">Use agent default</span><span className="block truncate text-xs text-muted-foreground">{models.find((item) => item.id === configuredModel)?.label || configuredModel || "Default"}</span></span>{selected.model === null ? <Check className="composer-run-settings-accent size-4" /> : null}</button> : null}
       {filteredModels.map((item) => <button type="button" role="option" aria-selected={selected.model === item.id} key={item.id} onClick={() => chooseModel(item.id)} className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"><span className="min-w-0 flex-1"><span className="block truncate font-medium">{item.label}</span>{item.id !== item.label ? <span className="block truncate font-mono text-xs text-muted-foreground">{item.id}</span> : null}</span>{item.detail || item.id === configuredModel ? <span className="shrink-0 text-xs text-muted-foreground">{item.detail ?? "Agent default"}</span> : null}{selected.model === item.id ? <Check className="composer-run-settings-accent size-4 shrink-0" /> : null}</button>)}
       {catalogPending ? <p className="px-2.5 py-2 text-xs text-muted-foreground">Loading models…</p> : null}
       {!catalogPending && !filteredModels.length && query ? <p className="px-2.5 py-2 text-xs text-muted-foreground">No catalog match.</p> : null}
     </div>
-    {query && !exactMatch ? <div className="mt-2 border-t border-border pt-2"><button type="button" disabled={!manualValid} onClick={() => chooseModel(query)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-accent disabled:opacity-40"><Plus className="size-4 shrink-0" aria-hidden /><span className="min-w-0 flex-1 truncate">Use exact ID <span className="font-mono font-semibold">{query}</span></span></button>{!manualValid ? <p className="px-2.5 text-xs text-destructive">{provider === "openrouter" ? "Use openrouter/provider/model with no spaces." : "Model IDs cannot contain spaces."}</p> : null}</div> : null}
+    {query && !exactMatch ? <div className="mt-2 border-t border-border pt-2"><button type="button" disabled={!manualValid} onClick={() => chooseModel(normalizedQuery)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-accent disabled:opacity-40"><Plus className="size-4 shrink-0" aria-hidden /><span className="min-w-0 flex-1 truncate">Use exact ID <span className="font-mono font-semibold">{normalizedQuery}</span></span></button>{!manualValid ? <p className="px-2.5 text-xs text-destructive">{provider === "openrouter" ? "Use openrouter/provider/model with no spaces." : "Model IDs cannot contain spaces."}</p> : null}</div> : null}
     <p className="px-2.5 pb-1 pt-2 text-xs text-muted-foreground">{provider === "openrouter" ? "Custom IDs: openrouter/provider/model. Provider access is checked when the run starts." : "Custom model IDs can be pasted here. Provider access is checked when the run starts."}</p>
   </div>;
 
