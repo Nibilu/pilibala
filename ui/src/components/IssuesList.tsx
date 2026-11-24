@@ -1,10 +1,11 @@
 import { useIssueRowDetails } from "../hooks/useIssueRowDetails";
 import { IssueRowDetailsNotice } from "./IssueRowDetailsNotice";
+import { IssueSearchInput } from "./IssueSearchInput";
 import { useShowAgentCreatedTasks } from "../hooks/useShowAgentCreatedTasks";
 import { useIssueHierarchyContext } from "../hooks/useIssueHierarchyContext";
 import { includeIssueHierarchyContext } from "../lib/issue-hierarchy-context";
 import { AgentIdentity } from "@/components/AgentIdentity";
-import { startTransition, useDeferredValue, useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, useCallback, useRef } from "react";
 import type { ReactNode } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVisibilityRefetchInterval } from "@/lib/polling";
@@ -18,10 +19,6 @@ import { authApi } from "../api/auth";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { queryKeys } from "../lib/queryKeys";
 import { useIssueExternalObjectSummaries } from "../hooks/useIssueExternalObjects";
-import {
-  shouldBlurPageSearchOnEnter,
-  shouldBlurPageSearchOnEscape,
-} from "../lib/keyboardShortcuts";
 import { formatAssigneeUserLabel } from "../lib/assignees";
 import { buildCompanyUserLabelMap, buildCompanyUserProfileMap } from "../lib/company-members";
 import { createIssueDetailPath, rememberIssueDetailLocationState, withIssueDetailHeaderSeed } from "../lib/issueDetailBreadcrumb";
@@ -73,10 +70,9 @@ import { IssuesList as LegacyIssuesList } from "./LegacyIssuesList";
 import { useStreamlinedUiEnabled } from "../hooks/useStreamlinedUiEnabled";
 import { PageSkeleton } from "./PageSkeleton";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
-import { CircleDot, Plus, ArrowUpDown, Layers, Check, ChevronRight, List, ListTree, User, Search, CircleSlash2, ChevronsDownUp, PanelTopClose, RotateCcw, ListCollapse,
+import { CircleDot, Plus, ArrowUpDown, Layers, Check, ChevronRight, List, ListTree, User, CircleSlash2, ChevronsDownUp, PanelTopClose, RotateCcw, ListCollapse,
   SquareKanban,
 } from "lucide-react";
 import {
@@ -102,7 +98,6 @@ import {
 import { taskDateGroup, taskDateGroupSeparator, type TaskDateGroup } from "../lib/task-date-groups";
 import { deriveOriginatingActor, ISSUE_STATUSES, type Issue, type IssueStatus, type Project } from "@paperclipai/shared";
 import { Badge } from "@/components/ui/badge";
-const ISSUE_SEARCH_DEBOUNCE_MS = 250;
 const ISSUE_SEARCH_RESULT_LIMIT = 200;
 const ISSUE_BOARD_COLUMN_RESULT_LIMIT = 200;
 type IssuesListNavEntry =
@@ -529,68 +524,6 @@ function LegacyIssuesToolbar({ context, search, controls }: CollectionToolbarPro
       <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
         {controls}
       </div>
-    </div>
-  );
-}
-
-function IssueSearchInput({
-  value,
-  onDebouncedChange,
-}: {
-  value: string;
-  onDebouncedChange?: (search: string) => void;
-}) {
-  const [draftValue, setDraftValue] = useState(value);
-  const lastCommittedValueRef = useRef(value);
-
-  useEffect(() => {
-    setDraftValue(value);
-    lastCommittedValueRef.current = value;
-  }, [value]);
-
-  useEffect(() => {
-    if (!onDebouncedChange || draftValue === lastCommittedValueRef.current) return;
-
-    const timeoutId = window.setTimeout(() => {
-      lastCommittedValueRef.current = draftValue;
-      startTransition(() => {
-        onDebouncedChange(draftValue);
-      });
-    }, ISSUE_SEARCH_DEBOUNCE_MS);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [draftValue, onDebouncedChange]);
-
-  return (
-    <div className="relative w-full sm:w-64 md:w-80">
-      <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        value={draftValue}
-        onChange={(e) => {
-          setDraftValue(e.target.value);
-        }}
-        onKeyDown={(e) => {
-          if (shouldBlurPageSearchOnEnter({
-            key: e.key,
-            isComposing: e.nativeEvent.isComposing,
-          })) {
-            e.currentTarget.blur();
-            return;
-          }
-
-          if (shouldBlurPageSearchOnEscape({
-            key: e.key,
-            isComposing: e.nativeEvent.isComposing,
-            currentValue: e.currentTarget.value,
-          })) {
-            e.currentTarget.blur();
-          }
-        }}
-        placeholder="Search tasks..."
-        className="pl-7 text-xs sm:text-sm"
-        aria-label="Search tasks"
-        data-page-search-target="true"
-      />
     </div>
   );
 }
@@ -1822,6 +1755,7 @@ function StreamlinedIssuesList({
         )}
         search={(
           <IssueSearchInput
+            containerClassName="relative w-full sm:w-64 md:w-80"
             value={issueSearch}
             onDebouncedChange={(nextSearch) => {
               setIssueSearch(nextSearch);

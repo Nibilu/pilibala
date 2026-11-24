@@ -127,6 +127,53 @@ describe("keyboardShortcuts helpers", () => {
     })).toBe(false);
   });
 
+  it("keeps focus on the IME commit Enter reported outside an active composition", () => {
+    // Safari and some Chromium builds end the composition before delivering the
+    // confirming Enter, so the keydown arrives with isComposing=false but the
+    // classic IME keyCode 229.
+    expect(shouldBlurPageSearchOnEnter({
+      key: "Enter",
+      isComposing: false,
+      keyCode: 229,
+    })).toBe(false);
+  });
+
+  it("keeps focus on an Enter within the composition-end grace window", () => {
+    // Composition-end ordering vs keydown delivery differs per browser/engine;
+    // the timestamp window covers every ordering.
+    expect(shouldBlurPageSearchOnEnter({
+      key: "Enter",
+      isComposing: false,
+      compositionEndedAt: 1000,
+      timeStamp: 1010,
+    })).toBe(false);
+  });
+
+  it("blurs again on an Enter well after a composition ended", () => {
+    expect(shouldBlurPageSearchOnEnter({
+      key: "Enter",
+      isComposing: false,
+      compositionEndedAt: 1000,
+      timeStamp: 2000,
+    })).toBe(true);
+  });
+
+  it("keeps focus on the IME Escape outside an active composition", () => {
+    expect(shouldBlurPageSearchOnEscape({
+      key: "Escape",
+      isComposing: false,
+      keyCode: 229,
+      currentValue: "",
+    })).toBe(false);
+    expect(shouldBlurPageSearchOnEscape({
+      key: "Escape",
+      isComposing: false,
+      compositionEndedAt: 1000,
+      timeStamp: 1015,
+      currentValue: "",
+    })).toBe(false);
+  });
+
   it("blurs page search on Escape when the field is already empty", () => {
     expect(shouldBlurPageSearchOnEscape({
       key: "Escape",
