@@ -888,11 +888,6 @@ export async function execute(
   // home has none — the CLI exits with "no dependency environment is
   // committed; run `hermes pm repair`". Repair once per home before the real
   // spawn; the persistent per-grant home makes this a one-time cost.
-  // A managed run points HERMES_HOME at a per-grant home that BORROWS the
-  // checkout: its dependency environment is committed per root, and a fresh
-  // home has none — the CLI exits with "no dependency environment is
-  // committed; run `hermes pm repair`". Repair once per home before the real
-  // spawn; the persistent per-grant home makes this a one-time cost.
   // Unmanaged runs (a developer's own HERMES_HOME) manage their own ledger.
   if (process.env.PILIBALA_HERMES_DIAG) {
     await ctx.onLog("stderr", `[hermes][diag] managedAiRouting=${config.managedAiRouting != null ? "present" : "absent"} HERMES_HOME=${env.HERMES_HOME ?? "unset"} committed=${env.HERMES_HOME ? await hasCommittedDependencyEnvironment(env.HERMES_HOME) : "n/a"}\n`);
