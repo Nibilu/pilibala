@@ -698,6 +698,44 @@ describe("pi remote execution", () => {
     expect(userPrompt).toBe("CUSTOM POLICY run-custom-policy");
   });
 
+  // AMB-333 (hermes parity, AMB-254 C5): an explicit adapterConfig
+  // pilibalaApiUrl wins over the server-derived URL, and custom prompt
+  // templates can reference {{pilibalaApiUrl}}.
+  it("applies the adapterConfig pilibalaApiUrl override to env and template data", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pilibala-pi-api-url-"));
+    cleanupDirs.push(rootDir);
+
+    await execute({
+      runId: "run-api-url-override",
+      agent: {
+        id: "agent-1",
+        companyId: "company-1",
+        name: "Pi Builder",
+        adapterType: "pi_local",
+        adapterConfig: {},
+      },
+      runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
+      config: {
+        command: "pi",
+        model: "openai/gpt-5.4-mini",
+        cwd: rootDir,
+        pilibalaApiUrl: "https://pilibala.example.com/api/",
+        promptTemplate: "API base {{pilibalaApiUrl}}",
+      },
+      context: {},
+      onLog: async () => {},
+    } as never);
+
+    const call = runChildProcess.mock.calls.at(-1) as unknown as
+      | [string, string, string[], { env: Record<string, string> }]
+      | undefined;
+    // The /api suffix is stripped: Pi skill scripts append it themselves.
+    expect(call?.[3].env.PILIBALA_API_URL).toBe("https://pilibala.example.com");
+    const args = call?.[2] ?? [];
+    const userPrompt = args.at(-1) ?? "";
+    expect(userPrompt).toBe("API base https://pilibala.example.com");
+  });
+
   it("keeps resumed default identity and connection guidance in the system carrier", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "pilibala-pi-resumed-policy-"));
     cleanupDirs.push(rootDir);

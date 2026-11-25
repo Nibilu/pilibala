@@ -19,6 +19,15 @@ export function buildPiLocalConfig(v: CreateConfigValues): Record<string, unknow
   ac.timeoutSec = 0;
   ac.graceSec = 20;
   
+  // Schema-driven Harness/Runtime settings (run-log output mode, Pilibala
+  // API URL override, prompt template — AMB-333) arrive through
+  // CreateConfigValues.adapterSchemaValues. Merge them last so an explicit
+  // choice made in setup persists to the agent record; schema defaults
+  // mirror the server's resolvePiStdoutLogMode behavior. (Hermes parity.)
+  if (v.adapterSchemaValues) {
+    Object.assign(ac, v.adapterSchemaValues);
+  }
+
   const env = buildAdapterEnvConfig(v.envBindings, v.envVars);
   if (Object.keys(env).length > 0) ac.env = env;
   if (v.command) ac.command = v.command;

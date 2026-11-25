@@ -287,6 +287,17 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     ...buildRuntimeToolsEnv(ctx.runtimeTools),
   };
   env.PILIBALA_RUN_ID = runId;
+  // AMB-333: an explicit adapterConfig.pilibalaApiUrl wins over the URL derived
+  // from the server env (config > server env, mirroring hermes_local's AMB-254
+  // C5 priority). Pi skill scripts append /api themselves (e.g.
+  // "$PILIBALA_API_URL/api/..."), so the subprocess URL must not carry the /api
+  // suffix — strip one if the value was copied from a full API base. A sandbox
+  // callback bridge still wins when one is active: the execution-target layer
+  // applies its bridge env after this at spawn time.
+  const configuredPilibalaApiUrl = asString(config.pilibalaApiUrl, "").trim();
+  if (configuredPilibalaApiUrl) {
+    env.PILIBALA_API_URL = configuredPilibalaApiUrl.replace(/\/+$/, "").replace(/\/api$/, "");
+  }
 
   const wakeTaskId =
     (typeof context.taskId === "string" && context.taskId.trim().length > 0 && context.taskId.trim()) ||
@@ -630,6 +641,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       agent,
       run: { id: runId, source: "on_demand" },
       context,
+      // Hermes-parity (AMB-333): custom prompt templates can reference
+      // {{pilibalaApiUrl}}. Defaults do not use it; the value is the
+      // adapterConfig override (or the server-derived URL) without a /api
+      // suffix, matching what the subprocess env carries.
+      pilibalaApiUrl: env.PILIBALA_API_URL ?? "",
     };
     const renderedSystemPromptExtension = renderTemplate(systemPromptExtension, templateData);
     const systemOwnsDefaultPolicy = !hasCustomPromptTemplate || Boolean(resolvedInstructionsFilePath && !instructionsReadFailed);
