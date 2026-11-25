@@ -25,7 +25,14 @@ export interface InvalidationBatcher {
   dispose: () => void;
 }
 
-export const DEFAULT_INVALIDATION_INTERVAL_MS = 300;
+/**
+ * 1500ms: during an active agent run the event stream itself is continuous, so
+ * a shorter window re-triggers heavy refetches (issues list/summaries) several
+ * times per second while adding little perceived freshness — board surfaces
+ * tolerate ~1s staleness, and run log streaming reaches the UI through the
+ * websocket directly (it does not depend on invalidation flushes).
+ */
+export const DEFAULT_INVALIDATION_INTERVAL_MS = 1500;
 
 type Deferred = { promise: Promise<void>; resolve: () => void };
 

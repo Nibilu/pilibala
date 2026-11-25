@@ -425,12 +425,14 @@ describe("LiveUpdatesProvider connection recovery", () => {
     await act(async () => vi.advanceTimersByTimeAsync(1));
     const socket = Socket.instances[0];
     await act(async () => socket.onopen?.());
-    await act(async () => vi.advanceTimersByTimeAsync(301));
+    // 1600 > the 1.5s coalescing window: each advance must cross one batcher
+    // flush so the assertions count real refreshes, not in-window buffering.
+    await act(async () => vi.advanceTimersByTimeAsync(1600));
     runRead.mockClear(); activeRead.mockClear();
     await act(async () => socket.onmessage?.({ data: JSON.stringify({ id: 1, companyId: "company-1",
       type: "heartbeat.run.queued", createdAt: "2020-01-01T00:00:00Z",
       payload: { agentId: "agent-1", runId: "new-run" } }) }));
-    await act(async () => vi.advanceTimersByTimeAsync(301));
+    await act(async () => vi.advanceTimersByTimeAsync(1600));
     expect(runRead).toHaveBeenCalledTimes(1);
     expect(activeRead).toHaveBeenCalledTimes(1);
   });

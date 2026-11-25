@@ -1535,7 +1535,7 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
     queryKey: queryKeys.issues.liveRuns(issueQueryRef),
     queryFn: () => heartbeatsApi.liveRunsForIssue(issueQueryRef),
     enabled: !!issueId,
-    refetchInterval: (query) => liveRunRefetchInterval(hasLiveConnection, query.state, 1000),
+    refetchInterval: (query) => liveRunRefetchInterval(hasLiveConnection, query.state, hasLiveConnection ? 5000 : 1000),
     placeholderData:
       keepPreviousDataForSameQueryTail<LiveRunForIssue[]>(issueQueryRef),
   });
@@ -1552,7 +1552,7 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
     queryKey: queryKeys.issues.activeRun(issueQueryRef),
     queryFn: () => heartbeatsApi.activeRunForIssue(issueQueryRef),
     enabled: activeRunQueryEnabled,
-    refetchInterval: (query) => liveRunCount > 0 ? false : liveRunRefetchInterval(hasLiveConnection, query.state, 1000),
+    refetchInterval: (query) => liveRunCount > 0 ? false : liveRunRefetchInterval(hasLiveConnection, query.state, hasLiveConnection ? 5000 : 1000),
     placeholderData: keepPreviousDataForSameQueryTail<ActiveRunForIssue | null>(
       issueQueryRef,
     ),
@@ -1590,8 +1590,11 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
         issueId,
       ),
     enabled: queuedCommentQueueEnabled,
+    // A connected realtime socket already pushes queue-affecting events; the
+    // poll is only reconciliation there, so it can idle slower than the
+    // disconnected fallback (which stays at 1s).
     refetchInterval: (query) => queuedCommentQueueEnabled &&
-      (liveRuntimeRun || query.state.data?.entries.length) ? 1000 : false,
+      (liveRuntimeRun || query.state.data?.entries.length) ? (hasLiveConnection ? 5000 : 1000) : false,
   });
   const [consumedQueuedCommentIds, setConsumedQueuedCommentIds] = useState<
     ReadonlySet<string>
@@ -1668,8 +1671,12 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
       };
     },
     enabled: !!issueId,
+    // Same reconciliation rationale as the other live-run polls: while the
+    // realtime socket is connected the run lifecycle arrives as events, so the
+    // periodic refetch only reconciles and may idle at 5s; disconnected tabs
+    // keep the responsive 1s fallback.
     refetchInterval:
-      hasLiveRuns || issueStatus === "in_progress" ? 1000 : false,
+      hasLiveRuns || issueStatus === "in_progress" ? (hasLiveConnection ? 5000 : 1000) : false,
     placeholderData: historyExpanded ? queryClient.getQueryData<RecentIssueRunWindow>([...queryKeys.issues.runs(issueQueryRef), "recent-window"])?.runs : undefined,
   });
   const observedRunIds = useMemo(() => [...new Set([

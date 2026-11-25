@@ -216,9 +216,11 @@ describe("LiveUpdatesProvider socket run notification scope", () => {
         createdAt: "2026-09-09T18:00:00.000Z", payload: { agentId: "other-agent", status: "error" } }),
     })));
     expect(pushToast).not.toHaveBeenCalled();
+    // The invalidation rides the coalescing batcher (1.5s default window), so
+    // the default 1s waitFor would time out before the flush lands.
     await vi.waitFor(() => expect(invalidate).toHaveBeenCalledWith(expect.objectContaining({
       queryKey: queryKeys.agents.detail("other-agent"),
-    })));
+    })), { timeout: 3000 });
   });
 
   it("ignores a callback retained from a closed socket", async () => {
