@@ -1,6 +1,6 @@
 import { describeError } from "../api/errors";
 import { useWarmTaskDetailCode } from "@/hooks/useWarmTaskDetailCode";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CompositionEvent as ReactCompositionEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { deriveOriginatingActor, INBOX_MINE_ISSUE_STATUS_FILTER, isHeartbeatRunVisibleInMine } from "@pilibalaai/shared";
@@ -710,6 +710,12 @@ export function Inbox() {
   const experimentalSettingsLoaded = experimentalSettings !== undefined;
   const [searchQuery, setSearchQuery] = useState("");
   const normalizedSearchQuery = searchQuery.trim();
+  // IME keydowns can arrive after compositionend with isComposing=false; the
+  // timestamp lets the shared blur guards swallow the composition keys.
+  const searchCompositionEndedAtRef = useRef<number | undefined>(undefined);
+  const handleSearchCompositionEnd = (event: ReactCompositionEvent<HTMLInputElement>) => {
+    searchCompositionEndedAtRef.current = event.nativeEvent.timeStamp;
+  };
   const [filterPreferences, setFilterPreferences] = useState<InboxFilterPreferences>(
     () => loadInboxFilterPreferences(selectedCompanyId),
   );
@@ -2288,10 +2294,14 @@ export function Inbox() {
             placeholder="Search inbox…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onCompositionEnd={handleSearchCompositionEnd}
             onKeyDown={(e) => {
               if (shouldBlurPageSearchOnEnter({
                 key: e.key,
                 isComposing: e.nativeEvent.isComposing,
+                keyCode: e.nativeEvent.keyCode,
+                compositionEndedAt: searchCompositionEndedAtRef.current,
+                timeStamp: e.nativeEvent.timeStamp,
               })) {
                 e.currentTarget.blur();
                 return;
@@ -2301,6 +2311,9 @@ export function Inbox() {
                 key: e.key,
                 isComposing: e.nativeEvent.isComposing,
                 currentValue: e.currentTarget.value,
+                keyCode: e.nativeEvent.keyCode,
+                compositionEndedAt: searchCompositionEndedAtRef.current,
+                timeStamp: e.nativeEvent.timeStamp,
               })) {
                 e.currentTarget.blur();
               }
@@ -2336,10 +2349,14 @@ export function Inbox() {
               placeholder="Search inbox…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onCompositionEnd={handleSearchCompositionEnd}
               onKeyDown={(e) => {
                 if (shouldBlurPageSearchOnEnter({
                   key: e.key,
                   isComposing: e.nativeEvent.isComposing,
+                  keyCode: e.nativeEvent.keyCode,
+                  compositionEndedAt: searchCompositionEndedAtRef.current,
+                  timeStamp: e.nativeEvent.timeStamp,
                 })) {
                   e.currentTarget.blur();
                   return;
@@ -2349,6 +2366,9 @@ export function Inbox() {
                   key: e.key,
                   isComposing: e.nativeEvent.isComposing,
                   currentValue: e.currentTarget.value,
+                  keyCode: e.nativeEvent.keyCode,
+                  compositionEndedAt: searchCompositionEndedAtRef.current,
+                  timeStamp: e.nativeEvent.timeStamp,
                 })) {
                   e.currentTarget.blur();
                 }
