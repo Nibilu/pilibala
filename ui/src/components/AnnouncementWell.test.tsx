@@ -36,6 +36,7 @@ describe("announcement placement gates", () => {
     health = { deploymentMode: "authenticated" } as HealthStatus;
     // Onboarding is finished (no open first task); onboarding gating is covered in AnnouncementWell.onboarding.test.tsx.
     client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    // Mirrors queryKeys.issues.onboardingFirstTask("company").
     client.setQueryData(["issues", "company", "onboarding-first-task"], []);
     container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   });

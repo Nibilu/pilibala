@@ -312,10 +312,11 @@ export const queryKeys = {
       ["issues", id, "recovery-actions", actionId, runId] as const,
     allRecoveryActions: (id: string) => ["issues", id, "recovery-actions"] as const,
     list: (companyId: string) => ["issues", companyId] as const,
+    // Lives under the company prefix ON PURPOSE: the announcement well must
+    // react to "first task finished" through ordinary live-event invalidation
+    // without a reload (covered by AnnouncementWell.onboarding.test.tsx).
     onboardingFirstTask: (companyId: string) =>
       ["issues", companyId, "onboarding-first-task"] as const,
-    mentionPool: (companyId: string) =>
-      ["issues", companyId, "mention-pool"] as const,
     search: (
       companyId: string,
       q: string,
@@ -659,6 +660,17 @@ export const queryKeys = {
       offset: number,
     ) => ["company-search", companyId, q, scope, limit, offset] as const,
   },
+  /**
+   * Composer `@task` reference pool (100 most recently updated issues). This is
+   * deliberately OUTSIDE the `issues` company namespace: the pool declares a
+   * 60s staleness contract for picker UX, and living under
+   * `["issues", companyId]` made every live-event invalidation flush
+   * force-refetch it (invalidateQueries ignores staleTime) — the single
+   * heaviest per-event request on task views. It is a type-ahead filter source,
+   * not a live-visible surface, so mount/focus/stale-expiry refreshes are its
+   * freshness contract.
+   */
+  mentionPool: (companyId: string) => ["mention-pool", companyId] as const,
   dashboard: (companyId: string) => ["dashboard", companyId] as const,
   attention: (companyId: string) => ["attention", companyId] as const,
   decisions: {

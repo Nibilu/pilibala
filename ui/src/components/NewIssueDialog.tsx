@@ -522,7 +522,7 @@ function AccountNewIssueDialog({ ignoreDefaults }: { ignoreDefaults: boolean }) 
     enabled: !!effectiveCompanyId && newIssueOpen,
   });
   const { data: mentionIssues } = useQuery({
-    queryKey: queryKeys.issues.mentionPool(effectiveCompanyId!),
+    queryKey: queryKeys.mentionPool(effectiveCompanyId!),
     queryFn: () => issuesApi.list(effectiveCompanyId!, {
       limit: 100,
       sortField: "updated",

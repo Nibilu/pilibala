@@ -3775,7 +3775,7 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
   // The picker filters this list client-side by identifier/title.
   const { data: mentionIssues = EMPTY_ISSUES } = useQuery({
     queryKey: resolvedCompanyId
-      ? queryKeys.issues.mentionPool(resolvedCompanyId)
+      ? queryKeys.mentionPool(resolvedCompanyId)
       : ["issues", "mention-pool", "pending"],
     queryFn: () =>
       issuesApi.list(resolvedCompanyId!, {
