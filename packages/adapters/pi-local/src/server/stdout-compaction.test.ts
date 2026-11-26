@@ -5,7 +5,11 @@ import {
   resolvePiStdoutLogMode,
   type PiStdoutLogMode,
 } from "./stdout-compaction.js";
-import { parsePiStdoutLine, resetParserState } from "../ui/parse-stdout.js";
+import {
+  createPiStdoutParser,
+  parsePiStdoutLine,
+  resetParserState,
+} from "../ui/parse-stdout.js";
 
 function messageUpdate(delta: string, cumulativeText: string) {
   return JSON.stringify({
@@ -367,5 +371,128 @@ describe("replay through Pilibala parsers", () => {
       toolCallId: "tc-1",
     };
     expect(parsePiStdoutLine(JSON.stringify(event), "2026-07-24T00:00:00Z")).toEqual([]);
+  });
+});
+
+describe("stateful UI parser (hermes-style transcript contract)", () => {
+  const TS = "2026-07-24T00:00:00Z";
+
+  function renderFactory(lines: string[]) {
+    const parser = createPiStdoutParser();
+    const entries = lines.flatMap((line) => parser.parseLine(line, TS));
+    parser.reset();
+    return entries;
+  }
+
+  it("renders the streamed answer and tool results exactly once", () => {
+    const entries = renderFactory(buildTranscript());
+
+    // The parser emits streaming deltas; the transcript builder coalesces
+    // consecutive same-kind delta entries. The exactly-once contract is:
+    // joined text equals the final answer, and NO non-delta full copy is
+    // pushed by the final-content carriers (the old duplication bug).
+    const assistantEntries = entries.filter((e) => e.kind === "assistant") as Array<{
+      text: string;
+      delta?: boolean;
+    }>;
+    expect(assistantEntries.map((e) => e.text).join("")).toBe("Hello world!");
+    expect(assistantEntries.every((e) => e.delta === true)).toBe(true);
+
+    const thinkingEntries = entries.filter((e) => e.kind === "thinking") as Array<{
+      text: string;
+      delta?: boolean;
+    }>;
+    // The builder concatenates delta tails without separators, so the joined
+    // text must reconstruct both thinking blocks exactly (no duplicated copy).
+    expect(thinkingEntries.map((e) => e.text).join("")).toBe(
+      "I should inspect the workspace.The directory contains two files.",
+    );
+    expect(thinkingEntries.every((e) => e.delta === true)).toBe(true);
+
+    const toolResults = entries.filter((e) => e.kind === "tool_result");
+    // tool_execution_end renders it; the turn_end toolResults copy is deduped.
+    expect(toolResults).toHaveLength(1);
+    expect(toolResults[0]).toMatchObject({ toolUseId: "tc-1", content: "file1\nfile2" });
+
+    const toolCalls = entries.filter((e) => e.kind === "tool_call");
+    expect(toolCalls).toHaveLength(1);
+
+    // Session card + final usage summary close the transcript.
+    expect(entries[0]).toMatchObject({ kind: "init", sessionId: "s-1" });
+    const results = entries.filter((e) => e.kind === "result");
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ text: "Run completed", outputTokens: 40 });
+  });
+
+  it("produces identical entries for raw and compact streams (factory invariant)", () => {
+    const raw = renderFactory(buildTranscript());
+    const compact = renderFactory(filterTranscript(buildTranscript(), "compact"));
+    expect(compact).toEqual(raw);
+  });
+
+  it("consumes the wake-prompt echo and toolResult message chrome", () => {
+    const parser = createPiStdoutParser();
+    expect(
+      parser.parseLine(
+        JSON.stringify({ type: "message_start", message: { role: "user", content: "## Pilibala Resume Delta" } }),
+        TS,
+      ),
+    ).toEqual([]);
+    expect(
+      parser.parseLine(
+        JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "## Pilibala Resume Delta" }] } }),
+        TS,
+      ),
+    ).toEqual([]);
+    const toolResultMessage = { role: "toolResult", toolCallId: "tc-9", toolName: "read", content: [{ type: "text", text: "x" }] };
+    expect(parser.parseLine(JSON.stringify({ type: "message_end", message: toolResultMessage }), TS)).toEqual([]);
+    parser.reset();
+  });
+
+  it("maps pi chrome onto shared entry shapes instead of raw stdout", () => {
+    const parser = createPiStdoutParser();
+    expect(parser.parseLine(JSON.stringify({ type: "session", id: "s-2" }), TS)).toEqual([
+      { kind: "init", ts: TS, model: "pi", sessionId: "s-2" },
+    ]);
+    expect(parser.parseLine(JSON.stringify({ type: "agent_settled", aborted: false }), TS)).toEqual([]);
+    expect(
+      parser.parseLine(JSON.stringify({ type: "entry_appended", entry: { type: "context_edit" } }), TS),
+    ).toEqual([]);
+    expect(parser.parseLine(JSON.stringify({ type: "agent_start" }), TS)).toEqual([]);
+    parser.reset();
+  });
+
+  it("surfaces provider retries as system lines and exhaustion as stderr", () => {
+    const parser = createPiStdoutParser();
+    expect(
+      parser.parseLine(
+        JSON.stringify({ type: "auto_retry_start", attempt: 2, maxAttempts: 3, errorMessage: "503: system cpu overloaded" }),
+        TS,
+      ),
+    ).toEqual([{ kind: "system", ts: TS, text: "Retrying (attempt 2/3): 503: system cpu overloaded" }]);
+    expect(
+      parser.parseLine(
+        JSON.stringify({ type: "auto_retry_end", success: false, attempt: 3, finalError: "503: system cpu overloaded" }),
+        TS,
+      ),
+    ).toEqual([
+      { kind: "stderr", ts: TS, text: "Provider retries exhausted (3 attempts): 503: system cpu overloaded" },
+    ]);
+    expect(
+      parser.parseLine(JSON.stringify({ type: "auto_retry_end", success: true, attempt: 1 }), TS),
+    ).toEqual([]);
+    parser.reset();
+  });
+
+  it("classifies adapter status lines and corrupted JSON as system notes", () => {
+    const parser = createPiStdoutParser();
+    expect(parser.parseLine("[pilibala] Skipping saved session resume for task X", TS)).toEqual([
+      { kind: "system", ts: TS, text: "[pilibala] Skipping saved session resume for task X" },
+    ]);
+    const truncated = '{"type":"tool_execution_end","toolCallId":"call-1","result":{"content":[{"type":"text","tex';
+    expect(parser.parseLine(truncated, TS)).toEqual([
+      { kind: "system", ts: TS, text: expect.stringContaining("[truncated pi event]") },
+    ]);
+    parser.reset();
   });
 });
