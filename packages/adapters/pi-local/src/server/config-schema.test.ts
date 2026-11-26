@@ -14,23 +14,24 @@ describe("pi_local adapter config schema (AMB-333)", () => {
 
   it("exposes exactly the settings execute.ts consumes", () => {
     expect(schema.fields.map((f) => f.key)).toEqual([
-      "stdoutLogMode",
+      "quiet",
+      "verbose",
       "pilibalaApiUrl",
       "promptTemplate",
     ]);
   });
 
-  it("maps quiet/verbose to the run-log compaction select", () => {
-    const stdoutLogMode = field("stdoutLogMode");
-    expect(stdoutLogMode?.type).toBe("select");
-    expect(stdoutLogMode?.default).toBe("compact");
-    expect(stdoutLogMode?.options?.map((option) => option.value)).toEqual([
-      "compact",
-      "raw",
-    ]);
-    const hint = String(stdoutLogMode?.hint ?? "");
-    expect(hint).toContain("no --quiet");
-    expect(hint).toContain("run-log");
+  it("maps the board-facing quiet/verbose controls to run-log compaction", () => {
+    const quiet = field("quiet");
+    expect(quiet?.type).toBe("toggle");
+    expect(quiet?.default).toBe(true);
+    expect(String(quiet?.hint ?? "")).toContain("no --quiet");
+    expect(String(quiet?.hint ?? "")).toContain("run-log compaction");
+
+    const verbose = field("verbose");
+    expect(verbose?.type).toBe("toggle");
+    expect(verbose?.default).toBe(false);
+    expect(String(verbose?.hint ?? "")).toContain("full raw JSONL transcript");
   });
 
   it("describes the pilibalaApiUrl override scope honestly", () => {

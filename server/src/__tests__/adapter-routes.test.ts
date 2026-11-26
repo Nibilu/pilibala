@@ -616,6 +616,20 @@ describe("adapter routes", () => {
     );
   });
 
+  it("serves the built-in Pi Harness/Runtime config schema", async () => {
+    const app = createApp();
+
+    const res = await request(app).get("/api/adapters/pi_local/config-schema");
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.fields).toEqual([
+      expect.objectContaining({ key: "quiet", type: "toggle" }),
+      expect.objectContaining({ key: "verbose", type: "toggle" }),
+      expect.objectContaining({ key: "pilibalaApiUrl", type: "text" }),
+      expect.objectContaining({ key: "promptTemplate", type: "textarea" }),
+    ]);
+  });
+
   it("serves built-in Hermes config schemas", async () => {
     const app = createApp();
 

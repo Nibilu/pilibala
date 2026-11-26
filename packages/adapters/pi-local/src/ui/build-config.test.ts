@@ -7,12 +7,14 @@ describe("buildPiLocalConfig", () => {
   it("merges schema-driven settings from adapterSchemaValues", () => {
     const config = buildPiLocalConfig({
       adapterSchemaValues: {
-        stdoutLogMode: "raw",
+        quiet: false,
+        verbose: true,
         pilibalaApiUrl: "https://pilibala.example.com",
         promptTemplate: "Custom template",
       },
     } as unknown as CreateConfigValues);
-    expect(config.stdoutLogMode).toBe("raw");
+    expect(config.quiet).toBe(false);
+    expect(config.verbose).toBe(true);
     expect(config.pilibalaApiUrl).toBe("https://pilibala.example.com");
     expect(config.promptTemplate).toBe("Custom template");
   });
@@ -21,7 +23,8 @@ describe("buildPiLocalConfig", () => {
     const config = buildPiLocalConfig({
       model: "openai/gpt-5.4-mini",
     } as unknown as CreateConfigValues);
-    expect(config.stdoutLogMode).toBeUndefined();
+    expect(config.quiet).toBeUndefined();
+    expect(config.verbose).toBeUndefined();
     expect(config.pilibalaApiUrl).toBeUndefined();
     expect(config.promptTemplate).toBeUndefined();
     expect(config.model).toBe("openai/gpt-5.4-mini");

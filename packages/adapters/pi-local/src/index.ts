@@ -32,20 +32,22 @@ Core fields:
 Operational fields:
 - timeoutSec (number, optional): run timeout in seconds
 - graceSec (number, optional): SIGTERM grace period in seconds
-- stdoutLogMode (string, optional, default "compact"): controls how Pi --mode json stdout is
-  compacted before entering the Pilibala run log. Pi emits cumulative state
-  in every message_update event, which makes run logs grow ~quadratically.
-  Modes:
-  - "raw": legacy passthrough, no filtering (full transcript; large logs).
-  - "compact" (default): strips cumulative copies (message_update.message,
-    assistantMessageEvent.partial), converts tool_execution_update to a
-    throttled content-free Pilibala progress event. Streaming deltas are
-    preserved — parsePiJsonl output and live UI typing are unchanged.
-  In compact mode, if a run is terminated before tool_execution_end, its
-  partial tool output is not retained; use "raw" when full forensic output is required.
-  Oversized individual lines are handled by the server's run-log pipeline
-  (redaction + head/tail cap) regardless of mode. Invalid explicit mode values
-  fail safe to "raw" rather than enabling a lossy transformation.
+- quiet (boolean, optional, default true): compact Pi --mode json stdout before it
+  enters the Pilibala run log. Pi emits cumulative state in every message_update
+  event, which makes run logs grow ~quadratically. Compact mode strips cumulative
+  copies (message_update.message, assistantMessageEvent.partial), converts
+  tool_execution_update to a throttled content-free Pilibala progress event, and
+  preserves streaming deltas — parsePiJsonl output and live UI typing are unchanged.
+- verbose (boolean, optional, default false): keep the full raw JSONL transcript for
+  forensics. This takes precedence over quiet when both are enabled. Pi has no
+  non-interactive --quiet/--verbose behavior, so these controls configure Pilibala's
+  persisted run-log mode rather than a Pi CLI flag.
+- stdoutLogMode (string, optional, legacy/internal): controls how Pi --mode json stdout
+  is compacted before entering the Pilibala run log ("raw" or "compact"). When present,
+  this explicit mode remains authoritative for backward compatibility. In compact mode,
+  if a run is terminated before tool_execution_end, its partial tool output is not retained;
+  use raw output when full forensic output is required. Oversized individual lines are
+  handled by the server's run-log pipeline (redaction + head/tail cap) regardless of mode.
 
 Notes:
 - Pi supports multiple providers and models. Use \`pi --list-models\` to list available options.

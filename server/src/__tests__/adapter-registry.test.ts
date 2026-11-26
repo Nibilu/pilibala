@@ -149,6 +149,10 @@ describe("server adapter registry", () => {
       expect(builtInCli?.detectModel, type).toBeTypeOf("function");
     }
 
+    // AMB-333: Pi's built-in registry entry must publish the declarative
+    // schema that the board uses to render Harness/Runtime controls.
+    expect(findServerAdapter("pi_local")?.getConfigSchema).toBeTypeOf("function");
+
     expect(builtInGateway).not.toBeNull();
     expect(builtInGateway?.supportsLocalAgentJwt).toBe(false);
     expect(builtInGateway?.supportsInstructionsBundle).toBe(false);

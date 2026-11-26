@@ -31,17 +31,24 @@ function isPiStdoutLogMode(value: string): value is PiStdoutLogMode {
 }
 
 export function resolvePiStdoutLogMode(config: Record<string, unknown>): PiStdoutLogMode {
-  if (config.stdoutLogMode === undefined || config.stdoutLogMode === null) {
-    return DEFAULT_PI_STDOUT_LOG_MODE;
+  // Preserve the internal mode selected by the original AMB-333 implementation
+  // and by existing agent configurations. The board-facing Quiet/Verbose
+  // toggles are only a semantic view over the same run-log behavior.
+  if (config.stdoutLogMode !== undefined && config.stdoutLogMode !== null) {
+    if (typeof config.stdoutLogMode !== "string") return "raw";
+    const normalized = config.stdoutLogMode.trim().toLowerCase();
+    if (isPiStdoutLogMode(normalized)) {
+      return normalized;
+    }
+    // Invalid explicit values fail safe to the lossless legacy stream rather
+    // than silently enabling a lossy transformation.
+    return "raw";
   }
-  if (typeof config.stdoutLogMode !== "string") return "raw";
-  const normalized = config.stdoutLogMode.trim().toLowerCase();
-  if (isPiStdoutLogMode(normalized)) {
-    return normalized;
-  }
-  // Invalid explicit values fail safe to the lossless legacy stream rather
-  // than silently enabling a lossy transformation.
-  return "raw";
+
+  if (config.verbose === true) return "raw";
+  if (config.quiet === true) return "compact";
+  if (config.quiet === false) return "raw";
+  return DEFAULT_PI_STDOUT_LOG_MODE;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

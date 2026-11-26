@@ -10,9 +10,9 @@ import type { AdapterConfigSchema } from "@pilibalaai/adapter-utils";
  * Scope notes (AMB-333):
  * - Pi has no `--quiet` CLI flag, and its `--verbose` flag only affects the
  *   interactive TUI startup — Pilibala always runs `pi --mode json -p`, where
- *   neither flag changes run output. The honest quiet/verbose log control for
- *   Pi is the run-log compaction mode (stdoutLogMode): "compact" keeps run
- *   logs quiet and linear-size, "raw" keeps the full verbose transcript.
+ *   neither flag changes run output. The board-facing Quiet/Verbose controls
+ *   therefore map to the adapter's run-log compaction mode: Quiet keeps run
+ *   logs compact and linear-size, while Verbose keeps the full raw transcript.
  * - `pilibalaApiUrl` applies: Pi skill scripts and the run subprocess read
  *   PILIBALA_API_URL from the environment; the override follows the
  *   adapterConfig → server env priority used by hermes_local (AMB-254 C5).
@@ -23,15 +23,18 @@ export function getConfigSchema(): AdapterConfigSchema {
   return {
     fields: [
       {
-        key: "stdoutLogMode",
-        label: "Run log output (quiet / verbose)",
-        type: "select",
-        default: "compact",
-        options: [
-          { value: "compact", label: "Quiet — compact run log (default)" },
-          { value: "raw", label: "Verbose — raw full transcript" },
-        ],
-        hint: "Pi has no --quiet flag and its --verbose flag only affects interactive startup, so quiet/verbose output maps to run-log compaction. Quiet strips cumulative streaming copies (linear-size run logs); Verbose keeps the full JSONL transcript for forensics.",
+        key: "quiet",
+        label: "Quiet output",
+        type: "toggle",
+        default: true,
+        hint: "Compact Pi's persisted run log by stripping cumulative streaming copies. Pi has no --quiet flag in non-interactive print mode, so this controls Pilibala run-log compaction instead.",
+      },
+      {
+        key: "verbose",
+        label: "Verbose output",
+        type: "toggle",
+        default: false,
+        hint: "Keep Pi's full raw JSONL transcript for forensics. Pi's --verbose flag only affects interactive startup, so this keeps the persisted run log uncompacted and takes precedence when both output controls are enabled.",
       },
       {
         key: "pilibalaApiUrl",
