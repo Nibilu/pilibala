@@ -137,6 +137,7 @@ import {
   sessionCodec as piSessionCodec,
   listPiModels,
   detectPiModel,
+  getConfigSchema as getPiConfigSchema,
 } from "@pilibalaai/adapter-pi-local/server";
 import { agentConfigurationDoc as piAgentConfigurationDoc } from "@pilibalaai/adapter-pi-local";
 import { BUILTIN_ADAPTER_TYPES } from "./builtin-adapter-types.js";
@@ -1023,6 +1024,11 @@ const piLocalAdapter: ServerAdapterModule = {
   getRuntimeCommandSpec: (config) =>
     buildNpmRuntimeCommandSpec(config, "pi", "@mariozechner/pi-coding-agent"),
   agentConfigurationDoc: piAgentConfigurationDoc,
+  // AMB-333: expose Pi's declarative Harness/Runtime schema through the
+  // built-in registry. Without this wiring the board endpoint returns 404,
+  // SchemaConfigFields renders nothing, and the Pi settings never reach the
+  // agent form even though the adapter and execute path consume them.
+  getConfigSchema: getPiConfigSchema,
 };
 
 const adaptersByType = new Map<string, ServerAdapterModule>();
