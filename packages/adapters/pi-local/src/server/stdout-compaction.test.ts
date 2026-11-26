@@ -238,6 +238,18 @@ describe("resolvePiStdoutLogMode", () => {
     expect(resolvePiStdoutLogMode({ stdoutLogMode: "raw" })).toBe("raw");
     expect(resolvePiStdoutLogMode({ stdoutLogMode: " Compact " })).toBe("compact");
   });
+
+  it("maps the board-facing quiet/verbose controls to compact/raw run logs", () => {
+    expect(resolvePiStdoutLogMode({ quiet: true, verbose: false })).toBe("compact");
+    expect(resolvePiStdoutLogMode({ quiet: false, verbose: false })).toBe("raw");
+    expect(resolvePiStdoutLogMode({ quiet: false, verbose: true })).toBe("raw");
+    expect(resolvePiStdoutLogMode({ quiet: true, verbose: true })).toBe("raw");
+  });
+
+  it("keeps the legacy internal mode authoritative when it is present", () => {
+    expect(resolvePiStdoutLogMode({ stdoutLogMode: "raw", quiet: true, verbose: false })).toBe("raw");
+    expect(resolvePiStdoutLogMode({ stdoutLogMode: "compact", quiet: false, verbose: true })).toBe("compact");
+  });
 });
 
 describe("raw mode", () => {

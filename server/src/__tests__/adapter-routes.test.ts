@@ -623,7 +623,8 @@ describe("adapter routes", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.fields).toEqual([
-      expect.objectContaining({ key: "stdoutLogMode", type: "select" }),
+      expect.objectContaining({ key: "quiet", type: "toggle" }),
+      expect.objectContaining({ key: "verbose", type: "toggle" }),
       expect.objectContaining({ key: "pilibalaApiUrl", type: "text" }),
       expect.objectContaining({ key: "promptTemplate", type: "textarea" }),
     ]);

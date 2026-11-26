@@ -12,15 +12,18 @@ import { TooltipProvider } from "../../components/ui/tooltip";
 const PI_LOCAL_SCHEMA = {
   fields: [
     {
-      key: "stdoutLogMode",
-      label: "Run log output (quiet / verbose)",
-      type: "select",
-      default: "compact",
-      options: [
-        { value: "compact", label: "Quiet — compact run log (default)" },
-        { value: "raw", label: "Verbose — raw full transcript" },
-      ],
-      hint: "Pi has no --quiet flag.",
+      key: "quiet",
+      label: "Quiet output",
+      type: "toggle",
+      default: true,
+      hint: "Compact the persisted Pi run log.",
+    },
+    {
+      key: "verbose",
+      label: "Verbose output",
+      type: "toggle",
+      default: false,
+      hint: "Keep the full raw JSONL transcript.",
     },
     { key: "pilibalaApiUrl", label: "Pilibala API URL", type: "text" },
     { key: "promptTemplate", label: "Prompt template", type: "textarea" },
@@ -44,7 +47,7 @@ function editProps(overrides: Partial<AdapterConfigFieldsProps> = {}): AdapterCo
     section: "configuration",
     values: null,
     set: null,
-    config: { instructionsFilePath: "/tmp/AGENTS.md", stdoutLogMode: "raw" },
+    config: { instructionsFilePath: "/tmp/AGENTS.md", quiet: false, verbose: true },
     eff: (_group, _field, original) => original,
     mark: vi.fn(),
     models: [],
@@ -74,10 +77,10 @@ it("renders the schema settings and the instructions-file field in the configura
   const container = await renderProps(editProps({ mark }));
   const fetchCalls = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((call) => String(call[0]));
   expect(fetchCalls).toContain("/api/adapters/pi_local/config-schema");
-  // Edit-mode read path: the stored stdoutLogMode drives the select label,
-  // and the schema text/textarea fields join the instructions-file field.
-  expect(container.textContent).toContain("Run log output (quiet / verbose)");
-  expect(container.textContent).toContain("Verbose — raw full transcript");
+  // Edit-mode read path: the schema controls and the instructions-file field
+  // share the Harness/Runtime configuration section.
+  expect(container.textContent).toContain("Quiet output");
+  expect(container.textContent).toContain("Verbose output");
   expect(container.textContent).toContain("Pilibala API URL");
   expect(container.textContent).toContain("Prompt template");
   expect(container.textContent).toContain("Agent instructions file");
