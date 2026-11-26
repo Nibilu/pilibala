@@ -225,6 +225,35 @@ describe("New agent setup", () => {
     expect(api.create).toHaveBeenCalledTimes(1);
   });
 
+  it("resumes a draft with completed harness settings at Configure even without a managed connection (AMB-329)", async () => {
+    const setupId = "00000000-0000-4000-8000-000000000094";
+    state.params = new URLSearchParams({ name: "Atlas", adapterType: "codex_local", runner: "legacy", setupAgentId: setupId });
+    api.get.mockResolvedValue({ id: setupId, companyId: "company-1", name: "Atlas", adapterType: "codex_local",
+      adapterConfig: { model: "gpt-5.4", dangerouslyBypassSandbox: true }, runtimeConfig: {}, pauseReason: "setup", status: "paused" });
+    await renderCurrentParams();
+    await settle();
+    // The saved harness/runtime settings reopen on Configure; only the managed
+    // connection step remains, offered as the next action instead of a restart.
+    expect(container.textContent).toContain("Configure your agent");
+    expect(container.textContent).not.toContain("Connect a model");
+    expect((container.querySelector('[aria-label="Model"]') as HTMLInputElement).value).toBe("gpt-5.4");
+    expect([...container.querySelectorAll("button")].some(button => button.textContent?.trim() === "Connect model")).toBe(true);
+    expect(api.create).not.toHaveBeenCalled();
+    expect(api.hire).not.toHaveBeenCalled();
+  });
+
+  it("still resumes a pristine runner draft at connection setup (AMB-329)", async () => {
+    const setupId = "00000000-0000-4000-8000-000000000095";
+    state.params = new URLSearchParams({ name: "Atlas", adapterType: "codex_local", runner: "auto", setupAgentId: setupId });
+    api.get.mockResolvedValue({ id: setupId, companyId: "company-1", name: "Atlas", adapterType: "pilibala_runner",
+      adapterConfig: { provider: "codex" }, runtimeConfig: {}, pauseReason: "setup", status: "paused" });
+    await renderCurrentParams();
+    await settle();
+    expect(container.textContent).toContain("Connect a model");
+    expect(container.textContent).not.toContain("Configure your agent");
+    expect(api.create).not.toHaveBeenCalled();
+  });
+
   it("retains the first agent's role when finishing its setup", async () => {
     api.list.mockResolvedValue([]);
     await render("codex_local");

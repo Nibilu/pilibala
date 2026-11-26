@@ -30,7 +30,7 @@ import type {
   Agent,
   EnvBinding,
 } from "@pilibalaai/shared";
-import { ADAPTER_AUTH_MISSING_CHECK_CODE, isAgentStatusInvokable, pilibalaRunnerCreationLifecycle, pilibalaRunnerProfileForHarness } from "@pilibalaai/shared";
+import { ADAPTER_AUTH_MISSING_CHECK_CODE, hasAgentSetupHold, isAgentStatusInvokable, pilibalaRunnerCreationLifecycle, pilibalaRunnerProfileForHarness } from "@pilibalaai/shared";
 import { useNavigate, useSearchParams } from "@/lib/router";
 import { agentsApi } from "@/api/agents";
 import { ApiError } from "@/api/client";
@@ -88,6 +88,22 @@ const nativeSetupHarnesses: Record<string, string> = {
 const blocking = (result: AdapterEnvironmentTestResult) =>
   result.status === "fail" ||
   result.checks.some((check) => check.code === ADAPTER_AUTH_MISSING_CHECK_CODE);
+// Creation-time adapterConfig keys a Runner draft carries before any
+// harness/runtime setting was saved: agentsApi.create writes these, while
+// saveDraft and configuration edits write more (AMB-329).
+const runnerCreationConfigKeys = new Set(["provider", "acpxAgent", "lifecycleMode"]);
+
+/** Whether a saved setup draft already holds completed harness/runtime settings. */
+function hasSavedSetupSettings(config: Record<string, unknown>): boolean {
+  return Object.entries(config).some(([key, value]) => {
+    if (runnerCreationConfigKeys.has(key)) return false;
+    if (value === undefined || value === null || value === "") return false;
+    if (key === "env" || key === "envBindings") {
+      return typeof value === "object" && Object.keys(value as Record<string, unknown>).length > 0;
+    }
+    return true;
+  });
+}
 
 export function NewAgentSetup() {
   const { selectedCompanyId } = useCompany();
@@ -774,7 +790,9 @@ function Setup({
     if (!savedAgent.data || restored.current === savedAgent.data.id || savedAgent.data.companyId !== companyId) return;
     restored.current = savedAgent.data.id;
     const agent = savedAgent.data;
-    if (agent.pauseReason !== "setup") { setScreen("saved"); return; }
+    // Lifecycle holds are authoritative (stale pauseReason values must not
+    // turn a resumable agent into an unfinished setup draft).
+    if (!hasAgentSetupHold(agent)) { setScreen("saved"); return; }
     const config = agent.adapterConfig;
     if (multiProvider || adapterType === "cursor_cloud") setRunner(agent.adapterType === "pilibala_runner" ? "pilibala" : "legacy");
     setModel(typeof config.model === "string" && config.model ? config.model : antigravityCandidate?.model ?? "");
@@ -797,7 +815,10 @@ function Setup({
     const binding = agent.runtimeConfig.aiConnection as AiConnectionBinding | undefined;
     if (binding && connectionAdapter) setConnection({ env: {}, aiConnection: binding });
     else if (binding) setRuntimeAiBinding(binding);
-    setScreen(binding || !connectionAdapter ? "runtime" : "connect");
+    // Resume where the draft left off: a draft whose harness/runtime settings
+    // were already completed and saved opens on Configure (a saved connection
+    // is restored above); only a pristine draft restarts at Connect (AMB-329).
+    setScreen(binding || hasSavedSetupSettings(config) || !connectionAdapter ? "runtime" : "connect");
   }, [savedAgent.data, companyId, connectionAdapter, brandType]);
 
   async function saveDraft(nextConnection = connection, exit = false, testedConfig?: Record<string, unknown>, selectedEnvironment = environmentOverride) {
