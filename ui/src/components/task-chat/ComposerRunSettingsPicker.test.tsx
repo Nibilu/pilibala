@@ -461,6 +461,32 @@ describe("composer assignee picker", () => {
     expect(onSettingsChange).toHaveBeenLastCalledWith({ model: "minimaxai/minimax-m3.1-flash", effort: null, fast: false });
   });
 
+  // AMB-326 P3: a pasted "vendor: model" display-convention id normalizes to
+  // the slash storage form before committing — a colon-form id saved into
+  // adapterConfig rides the transports undecoded (ModelRejected).
+  it("normalizes a pasted colon-form model id to the slash storage form", async () => {
+    const onSettingsChange = vi.fn();
+    render(vi.fn(), onSettingsChange, false, {
+      modelOptionsOverride: [
+        { id: "minimaxai/minimax-m3.1-flash", label: "MiniMax M3.1 Flash" },
+      ],
+    });
+    await click("Select model and effort");
+    await click("Choose exact model");
+    const search = document.querySelector<HTMLInputElement>('input[aria-label="Search or paste a model ID"]')!;
+    expect(search).not.toBeNull();
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(search, "minimaxai: minimax-m3.1-flash");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    // The normalized id matches the catalog entry, so the quick pick offers it.
+    const texts = [...document.querySelectorAll<HTMLButtonElement>('button[role="option"]')].map((item) => item.textContent ?? "");
+    expect(texts.some((t) => t.includes("MiniMax M3.1 Flash"))).toBe(true);
+    await click("MiniMax M3.1 Flash");
+    expect(onSettingsChange).toHaveBeenLastCalledWith({ model: "minimaxai/minimax-m3.1-flash", effort: null, fast: false });
+  });
+
   it("narrows the default-path harness catalog by keyword too", async () => {
     const onSettingsChange = vi.fn();
     render(vi.fn(), onSettingsChange, false, {
