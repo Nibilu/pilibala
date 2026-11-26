@@ -4479,7 +4479,7 @@ describe("IssueAssigneePausedNotice", () => {
     ["paused", "setup isn't finished"],
   ])("shows a setup-draft agent (%s) as still being set up, not manually paused", (lifecycleState, detail) => {
     const root = createRoot(container);
-    const agent = { ...pausedAgent("setup"), lifecycleState, urlKey: "ceo" } as unknown as Agent;
+    const agent = { ...pausedAgent("setup"), lifecycleState, lifecycleHolds: ["setup"], urlKey: "ceo" } as unknown as Agent;
 
     act(() => {
       root.render(
@@ -4502,6 +4502,25 @@ describe("IssueAssigneePausedNotice", () => {
     } else {
       expect(container.querySelector('[data-testid="issue-assignee-finish-setup"]')).toBeNull();
     }
+
+    act(() => root.unmount());
+  });
+
+  it("offers resume when a stale setup reason is not an active lifecycle hold", () => {
+    const root = createRoot(container);
+    const agent = { ...pausedAgent("setup"), lifecycleState: "paused", lifecycleHolds: [], urlKey: "ceo" } as unknown as Agent;
+
+    act(() => {
+      root.render(
+        <MemoryRouter initialEntries={["/ONB/issues/ONB-1"]}>
+          <IssueAssigneePausedNotice agent={agent} issueStatus="todo" onResume={vi.fn()} resuming={false} />
+        </MemoryRouter>,
+      );
+    });
+
+    expect(container.textContent).not.toContain("still being set up");
+    expect(container.querySelector('[data-testid="issue-assignee-paused-resume"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="issue-assignee-finish-setup"]')).toBeNull();
 
     act(() => root.unmount());
   });

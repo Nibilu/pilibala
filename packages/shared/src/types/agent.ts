@@ -100,6 +100,7 @@ export interface Agent {
   avatarUrl?: string;
   status: AgentStatus;
   lifecycleState?: AgentLifecycleState;
+  lifecycleHolds?: string[];
   lifecycleVersion?: number;
   lifecycleError?: string | null;
   reportsTo: string | null;

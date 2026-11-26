@@ -5,6 +5,19 @@ export const AGENT_LIFECYCLE_STATES = [
 ] as const;
 export type AgentLifecycleState = typeof AGENT_LIFECYCLE_STATES[number];
 
+/**
+ * Lifecycle holds are the authoritative pause reasons. `pauseReason` is kept
+ * for compatibility, but can be stale on older records and must not turn a
+ * resumable agent into an unfinished setup draft.
+ */
+export function hasAgentSetupHold(agent: {
+  lifecycleHolds?: readonly string[] | null;
+  pauseReason?: string | null;
+}): boolean {
+  if (Array.isArray(agent.lifecycleHolds)) return agent.lifecycleHolds.includes("setup");
+  return agent.pauseReason === "setup";
+}
+
 export interface AgentLifecycleOperation {
   id: string;
   resumeState?: "preparing" | "verifying" | "ready";

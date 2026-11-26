@@ -139,7 +139,7 @@ describe("AgentActionButtons", () => {
   }
 
   it.each(["codex_local", "claude_local", "opencode_local", "pi_local", "pilibala_runner"])("returns unfinished %s agents to their saved runner", async adapterType => {
-    render(makeAgent({ adapterType, status: "paused", lifecycleState: "paused", pauseReason: "setup" }));
+    render(makeAgent({ adapterType, status: "paused", lifecycleState: "paused", lifecycleHolds: ["setup"], pauseReason: "setup" }));
     await flushReact();
     const finish = [...container.querySelectorAll("button")].find(button => button.textContent === "Finish setup");
     expect(finish).toBeTruthy();
@@ -224,7 +224,7 @@ describe("AgentActionButtons", () => {
   });
 
   it("offers Run after setup completes without turning a manual pause into setup", async () => {
-    render(makeAgent({ status: "paused", lifecycleState: "paused", pauseReason: "setup" }));
+    render(makeAgent({ status: "paused", lifecycleState: "paused", lifecycleHolds: ["setup"], pauseReason: "setup" }));
     await flushReact();
     render(makeAgent({ status: "paused", lifecycleState: "paused", pauseReason: "manual" }));
     await flushReact();
@@ -237,6 +237,17 @@ describe("AgentActionButtons", () => {
     await act(() => run!.click());
     await flushReact();
     expect(mockAgentsApi.invoke).toHaveBeenCalledWith("agent-1", "company-1");
+  });
+
+  it("resumes a paused agent when lifecycle holds show that setup is no longer active", async () => {
+    render(makeAgent({ status: "paused", lifecycleState: "paused", lifecycleHolds: [], pauseReason: "setup" }));
+    await flushReact();
+
+    expect(container.textContent).toContain("Resume");
+    expect(container.textContent).not.toContain("Finish setup");
+    await act(async () => [...container.querySelectorAll("button")].find(button => button.textContent === "Resume")!.click());
+    await flushReact();
+    expect(mockAgentsApi.resume).toHaveBeenCalledWith("agent-1", "company-1");
   });
 
   it.each(["preparing", "verifying", "resuming"] as const)("offers pause rather than resume during %s", async lifecycleState => {

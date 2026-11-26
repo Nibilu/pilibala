@@ -44,6 +44,7 @@ import {
   duplicateAgentName,
   type DuplicateInstructionsBundle,
 } from "../lib/duplicate-agent-payload";
+import { hasAgentSetupHold } from "@pilibalaai/shared";
 import type {
   Agent,
   AgentInstructionsBundle,
@@ -252,7 +253,7 @@ export function AgentActionButtons({
   const canonicalAgentRef = agentRouteRef(agent);
   const isPaused = agent.lifecycleState ? agent.lifecycleState === "paused" : agent.status === "paused";
   const isAgentError = agent.status === "error";
-  const needsSetup = agent.pauseReason === "setup" && agent.status !== "terminated"
+  const needsSetup = hasAgentSetupHold(agent) && agent.status !== "terminated"
     && !["terminating", "cleaning_up", "terminated", "rejected"].includes(agent.lifecycleState ?? "");
 
   const reportError = useCallback(

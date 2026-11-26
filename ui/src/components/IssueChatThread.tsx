@@ -40,6 +40,7 @@ import {
   type ReactNode,
 } from "react";
 import { Link, useLocation } from "@/lib/router";
+import { hasAgentSetupHold } from "@pilibalaai/shared";
 import type {
   Agent,
   FeedbackDataSharingPreference,
@@ -826,10 +827,10 @@ export function IssueAssigneePausedNotice({
 }) {
   if (!agent || agent.status !== "paused" || issueStatusIsTerminalDisposition(issueStatus)) return null;
 
-  // A freshly created agent is stored as paused with pauseReason "setup" until
-  // its setup finishes. That is not an operator pause, so say what is actually
-  // happening and point at the real recovery path instead of "Resume agent".
-  if (agent.pauseReason === "setup") {
+  // A freshly created agent is held by the setup lifecycle until its setup
+  // finishes. That is not an operator pause, so say what is actually happening
+  // and point at the real recovery path instead of "Resume agent".
+  if (hasAgentSetupHold(agent)) {
     // Only computer preparation advances on its own (matches NewAgentSetup).
     // A "verifying" or parked draft waits for the user to finish the wizard.
     const stillPreparing = ["preparing", "pausing"].includes(agent.lifecycleState ?? "");
