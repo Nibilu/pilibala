@@ -27,6 +27,17 @@ describe("hermes adapter config schema (AMB-267 / C5)", () => {
     }
   });
 
+  it("states the orthogonal quiet/verbose contract in the hints (AMB-385)", () => {
+    const quietHint = String(field("quiet")?.hint ?? "");
+    expect(quietHint).toContain("presentation-only");
+    expect(quietHint).toContain("The run log stays full");
+    expect(quietHint).toContain("no flag is passed to Hermes");
+    const verboseHint = String(field("verbose")?.hint ?? "");
+    expect(verboseHint).toContain("--verbose");
+    expect(verboseHint).toContain("orthogonal");
+    expect(verboseHint).toContain("Never changes the rendered transcript");
+  });
+
   it("describes the pilibalaApiUrl engine scope honestly", () => {
     const hint = String(field("pilibalaApiUrl")?.hint ?? "");
     expect(hint).toContain("ACP engine ignores it");

@@ -709,10 +709,11 @@ export async function execute(
   const prompt = buildPrompt(ctx, promptConfig, { resumedSession: Boolean(sessionId) });
 
   // ── Build command args ─────────────────────────────────────────────────
-  // Use -Q (quiet) to get clean output: just response + session_id line
-  const useQuiet = cfgBoolean(config.quiet) === true; // default false
+  // Orthogonal output contract (docs/design/quiet-verbose-output-contract.md):
+  // `quiet` is the UI presentation-density axis and NEVER reaches the CLI —
+  // the raw run log stays full for every agent, and the UI's quiet filter
+  // handles display density. Only `verbose` (diagnostic axis) passes a flag.
   const args: string[] = ["chat", "-q", prompt];
-  if (useQuiet) args.push("-Q");
 
   if (model) {
     args.push("-m", model);
