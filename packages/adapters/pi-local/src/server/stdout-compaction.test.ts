@@ -243,9 +243,9 @@ describe("resolvePiStdoutLogMode", () => {
     expect(resolvePiStdoutLogMode({ stdoutLogMode: " Compact " })).toBe("compact");
   });
 
-  it("maps the board-facing quiet/verbose controls to compact/raw run logs", () => {
+  it("keeps quiet presentation-only — only verbose selects the raw run log (AMB-389)", () => {
     expect(resolvePiStdoutLogMode({ quiet: true, verbose: false })).toBe("compact");
-    expect(resolvePiStdoutLogMode({ quiet: false, verbose: false })).toBe("raw");
+    expect(resolvePiStdoutLogMode({ quiet: false, verbose: false })).toBe("compact");
     expect(resolvePiStdoutLogMode({ quiet: false, verbose: true })).toBe("raw");
     expect(resolvePiStdoutLogMode({ quiet: true, verbose: true })).toBe("raw");
   });

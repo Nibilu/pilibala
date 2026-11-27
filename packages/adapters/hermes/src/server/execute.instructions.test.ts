@@ -145,18 +145,31 @@ console.log("Fixture completed\\nsession_id: ${SESSION_ID}");
     expect(result.sessionParams).toBeUndefined();
   });
 
-  it("keeps custom templates and quiet mode dynamic while preserving a configured system overlay", async () => {
+  it("keeps quiet presentation-only (never passes -Q) while preserving custom templates and a configured system overlay", async () => {
     const ctx = context();
     await execute({ ...ctx, config: {
       ...ctx.config, quiet: true, promptTemplate: "Current custom direction for {{runId}}.",
       env: { CAPTURE_PATH: capturePath, HERMES_EPHEMERAL_SYSTEM_PROMPT: "User configured system guidance." },
     }, runtime: { ...ctx.runtime, sessionParams: { sessionId: SESSION_ID } } });
     const [invocation] = await invocations();
-    expect(invocation.args).toContain("-Q");
+    // Orthogonal output contract (AMB-387): quiet is the UI presentation axis
+    // and must not reach the CLI — the raw run log stays full.
+    expect(invocation.args).not.toContain("-Q");
     expect(query(invocation)).toContain("Current custom direction for run-fresh.");
     expect(query(invocation)).not.toContain(INSTRUCTIONS);
     expect(invocation.systemPrompt).toContain("User configured system guidance.");
     expect(invocation.systemPrompt).toContain(INSTRUCTIONS);
+  });
+
+  it("passes -v only for the verbose diagnostic axis (AMB-387)", async () => {
+    const ctx = context();
+    await execute(ctx);
+    const [defaultRun] = await invocations();
+    expect(defaultRun.args).not.toContain("-v");
+    await fs.rm(capturePath, { force: true });
+    await execute({ ...ctx, config: { ...ctx.config, verbose: true } });
+    const [verboseRun] = await invocations();
+    expect(verboseRun.args).toContain("-v");
   });
 
   it.each([false, true])("keeps an empty wake runnable with current identity (conversation=%s)", async (conversationMode) => {

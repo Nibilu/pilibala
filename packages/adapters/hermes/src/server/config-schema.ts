@@ -153,14 +153,14 @@ export function getConfigSchema(): AdapterConfigSchema {
         label: "Quiet output",
         type: "toggle",
         default: false,
-        hint: "Pass Hermes --quiet for cleaner Pilibala run transcripts.",
+        hint: "Simplify the run transcript display (presentation-only): hides thinking text and tool-result bodies, keeps hint rows, replies, approvals and results. The run log stays full; no flag is passed to Hermes.",
       },
       {
         key: "verbose",
         label: "Verbose output",
         type: "toggle",
         default: false,
-        hint: "Pass Hermes --verbose.",
+        hint: "Diagnostic logging (orthogonal to Quiet output): adds DEBUG diagnostics to the run log's raw stream. The CLI engine passes Hermes --verbose; the ACP engine turns on its runtime verbose. Never changes the rendered transcript.",
       },
       {
         key: "pilibalaApiUrl",

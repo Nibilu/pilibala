@@ -247,8 +247,8 @@ Available toolsets: `terminal`, `file`, `web`, `browser`, `code_execution`, `vis
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `hermesCommand` | string | `hermes` | Custom CLI binary path |
-| `verbose` | boolean | `false` | Enable verbose output |
-| `quiet` | boolean | `true` | Quiet mode (clean output, no banner/spinner) |
+| `verbose` | boolean | `false` | Diagnostic logging (orthogonal to quiet): passes Hermes `--verbose`; DEBUG logs land on the run log's stderr stream. Does not change the rendered transcript. |
+| `quiet` | boolean | `false` | Presentation-only transcript simplification in the Pilibala UI (thinking/tool-result bodies hidden; run log stays full). No flag is passed to Hermes. See `docs/design/quiet-verbose-output-contract.md`. |
 | `extraArgs` | string[] | `[]` | Additional CLI arguments |
 | `env` | object | `{}` | Extra environment variables |
 | `promptTemplate` | string | *(built-in)* | Custom prompt template |

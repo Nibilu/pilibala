@@ -438,6 +438,38 @@ describe("shared ACPX engine runtime behavior", () => {
     expect(result.sessionParams?.sessionKey).toBe(`pilibala:company-1:agent-1:default:${result.sessionParams?.configFingerprint}`);
   });
 
+  it("emits the verbose diagnostic block into the run-log stderr stream only when configured (AMB-388)", async () => {
+    const root = await makeTempRoot();
+    // Default: no verbose diagnostics in the run log, and the upstream-native
+    // acpx verbose rule (claude-only) is untouched.
+    const baseline = await runExecutor({
+      agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state-a"),
+    });
+    expect(baseline.logs.some((row) => row.text.includes("[pilibala][verbose] ACPX runtime:"))).toBe(false);
+    expect(baseline.runtimeOptions[0]?.verbose).toBe(false);
+
+    // adapterConfig verbose=true: the engine emits a compact diagnostics block
+    // onto the run log's stderr stream (raw view) — ACPX's own runtime verbose
+    // stays off for non-claude agents because it writes to the SERVER stderr,
+    // which never reaches the run log.
+    const verboseOn = await runExecutor({
+      agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state-b"),
+      verbose: true,
+    });
+    const block = verboseOn.logs.find(
+      (row) => row.stream === "stderr" && row.text.includes("[pilibala][verbose] ACPX runtime:"),
+    );
+    expect(block?.text).toContain("agent=custom");
+    expect(block?.text).toContain("mode=");
+    expect(block?.text).toContain("provider_process=");
+    expect(verboseOn.runtimeOptions[0]?.verbose).toBe(false);
+
+    // The upstream-native claude default keeps its acpx runtime verbose.
+    const claude = await runExecutor({ agent: "claude", stateDir: path.join(root, "state-c") });
+    expect(claude.runtimeOptions[0]?.verbose).toBe(true);
+    expect(claude.logs.some((row) => row.stream === "stderr" && row.text.includes("[pilibala][verbose] ACPX runtime:"))).toBe(false);
+  });
+
   it.each(["agentCommand", "cwd", "model", "thinkingEffort", "mode", "fastMode"] as const)(
     "folds configured %s into the engine session fingerprint",
     async (dimension) => {

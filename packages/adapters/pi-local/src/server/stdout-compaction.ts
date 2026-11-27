@@ -32,8 +32,10 @@ function isPiStdoutLogMode(value: string): value is PiStdoutLogMode {
 
 export function resolvePiStdoutLogMode(config: Record<string, unknown>): PiStdoutLogMode {
   // Preserve the internal mode selected by the original AMB-333 implementation
-  // and by existing agent configurations. The board-facing Quiet/Verbose
-  // toggles are only a semantic view over the same run-log behavior.
+  // and by existing agent configurations. Per the orthogonal output contract
+  // (docs/design/quiet-verbose-output-contract.md) the board-facing Quiet
+  // toggle is presentation-only and never reaches this resolution; Verbose is
+  // the diagnostic axis and keeps the lossless raw stream for forensics.
   if (config.stdoutLogMode !== undefined && config.stdoutLogMode !== null) {
     if (typeof config.stdoutLogMode !== "string") return "raw";
     const normalized = config.stdoutLogMode.trim().toLowerCase();
@@ -46,8 +48,6 @@ export function resolvePiStdoutLogMode(config: Record<string, unknown>): PiStdou
   }
 
   if (config.verbose === true) return "raw";
-  if (config.quiet === true) return "compact";
-  if (config.quiet === false) return "raw";
   return DEFAULT_PI_STDOUT_LOG_MODE;
 }
 

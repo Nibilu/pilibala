@@ -140,7 +140,8 @@ tools, persistent memory, session persistence, skills, and MCP support.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | hermesCommand | string | hermes | Path to hermes CLI binary |
-| verbose | boolean | false | Enable verbose output |
+| verbose | boolean | false | Diagnostic logging (orthogonal to quiet): passes Hermes --verbose; DEBUG logs land on the run log's stderr stream |
+| quiet | boolean | false | Presentation-only UI transcript simplification; the run log stays full and no flag is passed to Hermes |
 | extraArgs | string[] | [] | Additional CLI arguments |
 | env | object | {} | Extra environment variables |
 | promptTemplate | string | (default) | Custom prompt template with {{variable}} placeholders |
