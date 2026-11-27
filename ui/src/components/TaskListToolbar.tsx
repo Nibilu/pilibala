@@ -8,6 +8,14 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadio
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { taskListViews as views, type TaskListView } from "@/lib/task-list-views";
 
+/**
+ * The task list search commits into the URL (a router write per commit, with a
+ * server search attached to each `q` change). A settled-draft debounce keeps
+ * those writes off every keystroke and — with ToolbarSearch's draft-first
+ * field — keeps IME composition from being rewritten mid-typing (AMB-384).
+ */
+const TASK_LIST_SEARCH_DEBOUNCE_MS = 250;
+
 /** Canonical proposed task toolbar; review under Components / Toolbars / Tasks. */
 export function TaskListToolbar({ view, onViewChange, viewOptions = views, viewControl, query, onQueryChange, searchRef, layout, onLayoutChange, allExpanded, onToggleExpanded, onNewTask, filters }: {
   view: TaskListView;
@@ -35,7 +43,7 @@ export function TaskListToolbar({ view, onViewChange, viewOptions = views, viewC
           </FlyoutOptions></DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>}
-      <ToolbarSearch query={query} onQueryChange={onQueryChange} inputRef={searchRef} label="Search tasks" placeholder="Search tasks…" />
+      <ToolbarSearch query={query} onQueryChange={onQueryChange} inputRef={searchRef} label="Search tasks" placeholder="Search tasks…" debounceMs={TASK_LIST_SEARCH_DEBOUNCE_MS} />
       <div className="design-view-toggle" role="group" aria-label="Task layout">
         {[{ value: "list", label: "List view", icon: List }, { value: "board", label: "Board view", icon: Columns3 }].map(({ value, label, icon: Icon }) => (
           <Tooltip key={value}><TooltipTrigger asChild><Button variant="ghost" className="design-toolbar-button design-toolbar-icon" aria-label={label} aria-pressed={layout === value} onClick={() => onLayoutChange(value as "list" | "board")}><Icon aria-hidden /></Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>
