@@ -31,7 +31,7 @@ describe("normalizeModelEntry", () => {
 
 describe("resolveCatalogRoutingKind", () => {
   it("prefers the connection's routing kind", () => {
-    expect(resolveCatalogRoutingKind({ kind: "gateway", protocol: "chat", auth: "bearer" }, { provider: "openrouter" } as never)).toBe("gateway");
+    expect(resolveCatalogRoutingKind({ kind: "gateway", protocol: "chat", auth: "bearer", models: [] }, { provider: "openrouter" } as never)).toBe("gateway");
   });
 
   it("maps a legacy OpenRouter connection without routing metadata to openrouter", () => {

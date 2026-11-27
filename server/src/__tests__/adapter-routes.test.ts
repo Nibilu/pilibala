@@ -62,6 +62,19 @@ function registerModuleMocks() {
   vi.doMock("node:child_process", async () => vi.importActual("node:child_process"));
   vi.doMock("../adapters/plugin-loader.js", () => mockPluginLoader);
   vi.doMock("../services/adapter-plugin-store.js", () => mockAdapterPluginStore);
+  // Pin the local runner target to a runner-supported platform. The real
+  // probe reads the host's libc (getconf GNU_LIBC_VERSION); on hosts below
+  // PILIBALA_RUNNER_MINIMUM_GLIBC_VERSION (e.g. Ubuntu 20.04 / glibc 2.31)
+  // every pilibala-runner availability check would fail and the catalog
+  // tests below would assert runner-advertisement semantics that depend on
+  // the host OS instead of the route under test.
+  vi.doMock("../lib/agent-runner-platform.js", async () => ({
+    ...await vi.importActual("../lib/agent-runner-platform.js"),
+    localAgentRunnerTarget: () => ({
+      driver: "local" as const, platform: "linux", architecture: "x64",
+      libc: "glibc" as const, glibcVersion: "2.39",
+    }),
+  }));
 }
 
 function resetAdapterMocks() {
@@ -399,7 +412,9 @@ describe("adapter routes", () => {
       supportsSkills: true,
       supportsLocalAgentJwt: true,
       requiresMaterializedRuntimeSkills: false,
-      supportsAcp: false,
+      // engine=acp runs `hermes-acp` through the shared acpx-engine (the
+      // adapter defines an `acp` block), so ACP support is advertised.
+      supportsAcp: true,
     });
 
     const hermesGateway = res.body.find((a: any) => a.type === "hermes_gateway");

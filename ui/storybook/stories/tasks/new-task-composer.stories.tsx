@@ -138,7 +138,9 @@ function NewTaskStory({
     client.setQueryData(queryKeys.projects.list(COMPANY_ID), isolation ? storybookProjects : storybookProjects.map((project) => ({
       ...project, executionWorkspacePolicy: { ...project.executionWorkspacePolicy, enabled: false },
     })));
-    client.setQueryData(queryKeys.issues.mentionPool(COMPANY_ID), storybookIssues);
+    // mentionPool lives OUTSIDE the `issues` namespace (60s staleness
+    // contract for picker UX; kept out of the live-event cascade).
+    client.setQueryData(queryKeys.mentionPool(COMPANY_ID), storybookIssues);
     client.setQueryData(queryKeys.companySkills.list(COMPANY_ID), SKILLS);
     client.setQueryData(queryKeys.routines.list(COMPANY_ID), ROUTINES);
     client.setQueryData(queryKeys.instance.experimentalSettings, {
