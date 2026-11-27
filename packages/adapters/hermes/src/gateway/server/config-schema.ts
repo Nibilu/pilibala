@@ -71,6 +71,26 @@ export function getConfigSchema(): AdapterConfigSchema {
         type: "textarea",
         hint: "Optional stable Hermes instructions sent separately from the wake input.",
       },
+      {
+        key: "quiet",
+        label: "Quiet output",
+        type: "toggle",
+        default: false,
+        hint: "Simplify the run transcript display (presentation-only): hides thinking text and tool-result bodies in the Pilibala UI; hint rows, replies, approvals and results stay. Does not change the gateway run log.",
+      },
+      {
+        key: "verbose",
+        label: "Verbose output",
+        type: "toggle",
+        default: false,
+        hint: "Diagnostic logging (orthogonal to Quiet output): adds a [pilibala][verbose] configuration diagnostics line to the run log. Never changes the rendered transcript.",
+      },
+      {
+        key: "promptTemplate",
+        label: "Prompt template",
+        type: "textarea",
+        hint: "Optional custom prompt template with {{variable}} placeholders (supports {{#section}}...{{/section}} conditionals), rendered as an additional section of the wake input. Leave empty for Pilibala's default assembly.",
+      },
     ],
   };
 }

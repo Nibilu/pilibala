@@ -136,6 +136,9 @@ export function HermesGatewayConfigFields({
   const eventReconnectMs = Number(readValue("eventReconnectMs", DEFAULT_EVENT_RECONNECT_MS) ?? DEFAULT_EVENT_RECONNECT_MS);
   const allowInsecureRemoteHttp = Boolean(readValue("dangerouslyAllowInsecureRemoteHttp", false));
   const instructions = String(readValue("instructions", "") ?? "");
+  const quiet = Boolean(readValue("quiet", false));
+  const verbose = Boolean(readValue("verbose", false));
+  const promptTemplate = String(readValue("promptTemplate", "") ?? "");
   const headers = isCreate
     ? String(readCreateValue(values, "headers", "") ?? "")
     : headersDraft;
@@ -245,6 +248,32 @@ export function HermesGatewayConfigFields({
         <DraftTextarea
           value={instructions}
           onCommit={(v) => writeValue("instructions", v || undefined)}
+          immediate
+          minRows={3}
+        />
+      </Field>
+
+      <ToggleField
+        label="Quiet output"
+        hint="Simplify the run transcript display (presentation-only): hides thinking text and tool-result bodies in the Pilibala UI; hint rows, replies, approvals and results stay. Does not change the gateway run log."
+        checked={quiet}
+        onChange={(v) => writeValue("quiet", v)}
+      />
+
+      <ToggleField
+        label="Verbose output"
+        hint="Diagnostic logging (orthogonal to Quiet output): adds a [pilibala][verbose] configuration diagnostics line to the run log. Never changes the rendered transcript."
+        checked={verbose}
+        onChange={(v) => writeValue("verbose", v)}
+      />
+
+      <Field
+        label="Prompt template"
+        hint="Optional custom prompt template with {{variable}} placeholders (supports {{#section}}...{{/section}} conditionals), rendered as an additional section of the wake input. Leave empty for Pilibala's default assembly."
+      >
+        <DraftTextarea
+          value={promptTemplate}
+          onCommit={(v) => writeValue("promptTemplate", v || undefined)}
           immediate
           minRows={3}
         />

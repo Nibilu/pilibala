@@ -9,6 +9,7 @@ import {
   asString,
   parseObject,
   readPilibalaIssueWorkModeFromContext,
+  renderTemplate,
   selectPilibalaPromptSections,
   isPilibalaRecoveryWakePayload,
   stringifyPilibalaWakePayload,
@@ -335,6 +336,25 @@ function buildHeaders(input: {
   };
 }
 
+/**
+ * Conditional template sections for promptTemplate ({{#key}}...{{/key}}),
+ * mirroring the hermes_local lane's semantics (packages/adapters/hermes/src/
+ * server/execute.ts). Duplicated locally rather than imported to keep the
+ * gateway lane decoupled from the CLI lane's module graph.
+ */
+function renderConditionalSections(template: string, vars: Record<string, unknown>): string {
+  const isTruthy = (key: string) => {
+    if (key === "noTask") return !vars.taskId;
+    const value = vars[key];
+    if (Array.isArray(value)) return value.length > 0;
+    return Boolean(value);
+  };
+  return template.replace(
+    /\{\{#([a-zA-Z0-9_.-]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g,
+    (_match, key: string, body: string) => (isTruthy(key) ? body : ""),
+  );
+}
+
 function buildInput(ctx: AdapterExecutionContext, pilibalaApiUrl: string | null): string {
   // Stable session keys (issue/agent strategy) resume the same remote Hermes
   // conversation across runs; a stored session id from a prior run means that
@@ -357,6 +377,29 @@ function buildInput(ctx: AdapterExecutionContext, pilibalaApiUrl: string | null)
       });
   const sessionHandoff = nonEmpty(ctx.context.pilibalaSessionHandoffMarkdown);
   const issueWorkMode = readPilibalaIssueWorkModeFromContext(ctx.context);
+  // Optional custom prompt template (orthogonal output contract parity with
+  // hermes_local/pi_local): rendered as an ADDITIONAL section — never a
+  // replacement of the default assembly — and skipped for recovery wakes so
+  // the recovery contract stays authoritative.
+  const promptTemplate = nonEmpty(ctx.config.promptTemplate);
+  const context = ctx.context as Record<string, unknown>;
+  const templateVars: Record<string, unknown> = {
+    agentId: ctx.agent.id,
+    agentName: ctx.agent.name,
+    companyId: ctx.agent.companyId,
+    runId: ctx.runId,
+    taskId: nonEmpty(context.taskId) ?? nonEmpty(context.issueId) ?? "",
+    taskTitle: nonEmpty(context.taskTitle) ?? "",
+    taskBody: nonEmpty(context.taskBody) ?? "",
+    commentId: nonEmpty(context.commentId) ?? nonEmpty(context.wakeCommentId) ?? "",
+    wakeReason: nonEmpty(context.wakeReason) ?? "",
+    pilibalaApiUrl: pilibalaApiUrl ?? "",
+    pilibalaWakePrompt: wakePrompt,
+  };
+  const promptTemplateSection =
+    promptTemplate && !isPilibalaRecoveryWakePayload(ctx.context.pilibalaWake)
+      ? renderTemplate(renderConditionalSections(promptTemplate, templateVars), templateVars)
+      : "";
   const lines = [
     `You are ${ctx.agent.name}, an AI agent employee in a Pilibala-managed company.`,
     "",
@@ -380,6 +423,7 @@ function buildInput(ctx: AdapterExecutionContext, pilibalaApiUrl: string | null)
     wakePrompt,
     ...(sessionHandoff ? ["", sessionHandoff] : []),
     ...(taskMarkdown ? ["", taskMarkdown] : []),
+    ...(promptTemplateSection ? ["", promptTemplateSection] : []),
     ...(wakePayloadJson
       ? [
           "",
@@ -1110,6 +1154,18 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       hasSessionKey: Boolean(sessionKey),
     },
   });
+  // Orthogonal output contract (docs/design/quiet-verbose-output-contract.md):
+  // `verbose` is the diagnostic axis. The gateway lane already logs its
+  // lifecycle unconditionally; verbose adds one compact configuration
+  // diagnostics line to the run log's stderr stream (mirrors the acpx engine's
+  // AMB-388 diagnostics block). It never changes the rendered transcript —
+  // stderr entries are excluded from the chat surface by design.
+  if (ctx.config.verbose === true) {
+    await ctx.onLog(
+      "stderr",
+      `[pilibala][verbose] hermes-gateway: apiBase=${baseUrl} timeout=${timeoutSec}s reconnectMs=${reconnectMs} sessionStrategy=${strategy} instructions=${nonEmpty(ctx.config.instructions) ? "set" : "unset"} promptTemplate=${nonEmpty(ctx.config.promptTemplate) ? "set" : "unset"}\n`,
+    );
+  }
   await ctx.onLog("stdout", `[hermes-gateway] creating run at ${createRunUrl} (timeout=${timeoutSec}s, session=${strategy})\n`);
   await ctx.onLog("stdout", `[hermes-gateway] request headers (redacted): ${stringifyForLog(redactForLog(runHeaders, [], 0, redactText), 3_000)}\n`);
 

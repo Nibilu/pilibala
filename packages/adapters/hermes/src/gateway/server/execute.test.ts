@@ -1538,3 +1538,127 @@ describe("mapFinalResultForTest — last-segment summary fallback (AMB-269 / C7)
     expect(result.summary).toBe("authoritative terminal output");
   });
 });
+
+describe("verbose diagnostics (orthogonal output contract, gateway lane)", () => {
+  function mockGatewayRun(): void {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/v1/runs")) {
+        return new Response(JSON.stringify({ run_id: "run-hermes-1", status: "started" }), { status: 200 });
+      }
+      if (url.endsWith("/events")) {
+        return new Response(
+          sseStream(["event: run.completed", "data: {\"status\":\"completed\",\"output\":\"done\"}", ""].join("\n")),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      return new Response(JSON.stringify({ status: "completed", output: "done" }), { status: 200 });
+    }));
+  }
+
+  function stderrOf(ctx: AdapterExecutionContext): string {
+    return (ctx.onLog as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([stream]) => stream === "stderr")
+      .map(([, chunk]) => String(chunk))
+      .join("\n");
+  }
+
+  it("emits the [pilibala][verbose] config diagnostics line when verbose=true", async () => {
+    mockGatewayRun();
+    const ctx = makeCtx({
+      apiBaseUrl: "http://127.0.0.1:8642",
+      apiKey: "secret-key",
+      timeoutSec: 5,
+      verbose: true,
+    });
+
+    const result = await execute(ctx);
+
+    expect(result.exitCode).toBe(0);
+    const stderr = stderrOf(ctx);
+    expect(stderr).toContain("[pilibala][verbose] hermes-gateway:");
+    expect(stderr).toContain("sessionStrategy=issue");
+    expect(stderr).toContain("timeout=5s");
+    expect(stderr).toContain("promptTemplate=unset");
+  });
+
+  it("emits no verbose diagnostics line by default", async () => {
+    mockGatewayRun();
+    const ctx = makeCtx({
+      apiBaseUrl: "http://127.0.0.1:8642",
+      apiKey: "secret-key",
+      timeoutSec: 5,
+    });
+
+    const result = await execute(ctx);
+
+    expect(result.exitCode).toBe(0);
+    expect(stderrOf(ctx)).not.toContain("[pilibala][verbose]");
+  });
+});
+
+describe("promptTemplate wake-input section (gateway lane)", () => {
+  function createCallBody(fetchMock: ReturnType<typeof vi.fn>): Record<string, unknown> {
+    const calls = fetchMock.mock.calls as Array<[RequestInfo | URL, RequestInit?]>;
+    const createCall = calls.find(([input]) => String(input).endsWith("/v1/runs"));
+    expect(createCall).toBeTruthy();
+    return JSON.parse(String((createCall?.[1] as RequestInit).body));
+  }
+
+  it("renders the custom template as an additional input section with variables", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/v1/runs")) {
+        return new Response(JSON.stringify({ run_id: "run-hermes-1", status: "started" }), { status: 200 });
+      }
+      if (url.endsWith("/events")) {
+        return new Response(
+          sseStream(["event: run.completed", "data: {\"status\":\"completed\",\"output\":\"done\"}", ""].join("\n")),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      return new Response(JSON.stringify({ status: "completed", output: "done" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await execute(makeCtx({
+      apiBaseUrl: "http://127.0.0.1:8642",
+      apiKey: "secret-key",
+      timeoutSec: 5,
+      promptTemplate: "Custom brief for {{agentName}} on {{taskId}}{{#wakeReason}} (wake: {{wakeReason}}){{/wakeReason}}.",
+    }));
+
+    expect(result.exitCode).toBe(0);
+    const body = createCallBody(fetchMock);
+    expect(body.input).toContain("Custom brief for Hermes on issue-1 (wake: manual).");
+    // Append-not-replace: the default wake assembly is still present.
+    expect(body.input).toContain("Do the thing");
+  });
+
+  it("omits the template section when promptTemplate is empty", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/v1/runs")) {
+        return new Response(JSON.stringify({ run_id: "run-hermes-1", status: "started" }), { status: 200 });
+      }
+      if (url.endsWith("/events")) {
+        return new Response(
+          sseStream(["event: run.completed", "data: {\"status\":\"completed\",\"output\":\"done\"}", ""].join("\n")),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      return new Response(JSON.stringify({ status: "completed", output: "done" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await execute(makeCtx({
+      apiBaseUrl: "http://127.0.0.1:8642",
+      apiKey: "secret-key",
+      timeoutSec: 5,
+    }));
+
+    expect(result.exitCode).toBe(0);
+    const body = createCallBody(fetchMock);
+    expect(body.input).not.toContain("Custom brief");
+  });
+});

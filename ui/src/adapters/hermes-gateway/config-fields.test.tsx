@@ -81,4 +81,43 @@ describe("HermesGatewayConfigFields", () => {
 
     expect(result.container.querySelector('button[aria-label="Show API key"]')).toBeTruthy();
   });
+
+  it("renders the orthogonal-contract fields (quiet/verbose/promptTemplate)", () => {
+    const result = renderFields({
+      config: {
+        quiet: true,
+        verbose: false,
+        promptTemplate: "Hello {{agentName}}",
+      },
+    });
+    roots.push(result.root);
+
+    const text = result.container.textContent ?? "";
+    expect(text).toContain("Quiet output");
+    expect(text).toContain("Verbose output");
+    expect(text).toContain("Prompt template");
+
+    // Persisted values drive the toggle states.
+    expect(result.container.querySelector('button[aria-label="Quiet output"]')?.getAttribute("aria-checked")).toBe("true");
+    expect(result.container.querySelector('button[aria-label="Verbose output"]')?.getAttribute("aria-checked")).toBe("false");
+    // Several textareas render (headers, instructions, template) — find the
+    // one carrying the persisted template value.
+    const templateArea = Array.from(result.container.querySelectorAll("textarea"))
+      .find((t) => t.value.includes("{{agentName}}"));
+    expect(templateArea?.value).toBe("Hello {{agentName}}");
+  });
+
+  it("commits quiet/verbose toggles through mark()", () => {
+    const result = renderFields({ config: { quiet: true } });
+    roots.push(result.root);
+
+    const verboseToggle = result.container.querySelector<HTMLButtonElement>('button[aria-label="Verbose output"]');
+    expect(verboseToggle).toBeTruthy();
+    act(() => verboseToggle!.click());
+    expect(result.mark).toHaveBeenCalledWith("adapterConfig", "verbose", true);
+
+    const quietToggle = result.container.querySelector<HTMLButtonElement>('button[aria-label="Quiet output"]');
+    act(() => quietToggle!.click());
+    expect(result.mark).toHaveBeenCalledWith("adapterConfig", "quiet", false);
+  });
 });
