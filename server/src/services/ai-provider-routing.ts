@@ -26,6 +26,12 @@ export function managedProviderRouting(
   const config: Record<string, unknown> = {};
   let codexConfig = "";
   let hermesConfig = "";
+  // The env var that carries the connection credential for this harness, so
+  // consumers (the environment-test gateway probe) can read it BY NAME instead
+  // of guessing from positional env values — the managed runtime env also
+  // carries managed-home paths (HOME, CODEX_HOME, …) that sort before the
+  // credential and must never be mistaken for it.
+  let credentialEnvKey: string | undefined;
   const baseUrl = aiRoutingBaseUrl(route, harness);
   const openrouter = isOpenRouterUrl(baseUrl);
   if (route.kind === "bedrock") {
@@ -34,16 +40,17 @@ export function managedProviderRouting(
     env.AWS_DEFAULT_REGION = route.region!;
     env.AWS_EC2_METADATA_DISABLED = "true";
     env.AWS_BEARER_TOKEN_BEDROCK = credential;
+    credentialEnvKey = "AWS_BEARER_TOKEN_BEDROCK";
   } else if (harness === "codex_local") {
     env.PILIBALA_AI_PROVIDER_KEY = credential;
+    credentialEnvKey = "PILIBALA_AI_PROVIDER_KEY";
     codexConfig = `model_provider = "pilibala"\n[model_providers.pilibala]\nname = "Pilibala connection"\nbase_url = ${JSON.stringify(baseUrl)}\nwire_api = "responses"\nrequires_openai_auth = false\n${route.auth === "none" ? "" : 'env_key = "PILIBALA_AI_PROVIDER_KEY"\n'}`;
     if (openrouter) codexConfig += openRouterCodexHeaders();
   } else if (harness === "claude_local") {
     env.ANTHROPIC_BASE_URL = baseUrl;
     if (openrouter) env.ANTHROPIC_CUSTOM_HEADERS = openRouterClaudeHeaders();
-    env[
-      route.auth === "api_key" ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN"
-    ] = credential;
+    credentialEnvKey = route.auth === "api_key" ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN";
+    env[credentialEnvKey] = credential;
     env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
     if (model) {
       env.ANTHROPIC_MODEL = model;
@@ -54,6 +61,7 @@ export function managedProviderRouting(
     }
   } else if (harness === "pi_local" && route.kind === "openrouter") {
     env.OPENROUTER_API_KEY = credential;
+    credentialEnvKey = "OPENROUTER_API_KEY";
     config.model = aiRoutingModel(route, harness, model);
   } else if (harness === "pi_local") {
     // Generic gateway/local (chat_completions + baseUrl): pi has no base-url
@@ -63,12 +71,18 @@ export function managedProviderRouting(
     // and expands {env:VAR} placeholders server-side, so the credential rides
     // the child env only — never a literal in a persisted config.
     const gatewayKeyName = "PILIBALA_PI_GATEWAY_KEY";
-    if (route.auth !== "none") env[gatewayKeyName] = credential;
+    if (route.auth !== "none") {
+      env[gatewayKeyName] = credential;
+      credentialEnvKey = gatewayKeyName;
+    }
     const routingModels = Array.isArray(route.models) ? route.models : [];
+    // Idempotent projection: the caller may pass an already-prefixed model id
+    // ("pilibala/x") — strip it before re-prefixing.
+    const bareModel = model.startsWith("pilibala/") ? model.slice("pilibala/".length) : model;
     const modelIds = [
       ...new Set([
         ...routingModels.map((entry) => entry.id),
-        ...(model ? [model] : []),
+        ...(bareModel ? [bareModel] : []),
       ]),
     ];
     env.PILIBALA_PI_PROVIDERS = JSON.stringify({
@@ -79,12 +93,15 @@ export function managedProviderRouting(
         models: modelIds.map((id) => ({ id, name: id, input: ["text"] })),
       },
     });
-    config.model = model ? `pilibala/${model}` : "";
+    config.model = bareModel ? `pilibala/${bareModel}` : "";
   } else if (harness === "opencode_local") {
     const provider = route.kind === "openrouter" ? "openrouter" : "pilibala";
-    if (route.kind === "openrouter") env.OPENROUTER_API_KEY = credential;
-    else {
+    if (route.kind === "openrouter") {
+      env.OPENROUTER_API_KEY = credential;
+      credentialEnvKey = "OPENROUTER_API_KEY";
+    } else {
       env.PILIBALA_AI_PROVIDER_KEY = credential;
+      credentialEnvKey = "PILIBALA_AI_PROVIDER_KEY";
       env.PILIBALA_AI_PROVIDER_URL = baseUrl;
     }
     const id = model.startsWith(`${provider}/`)
@@ -139,6 +156,7 @@ export function managedProviderRouting(
     const gatewayKeyName = `PILIBALA_${provider.toUpperCase()}_KEY`;
     if (route.auth !== "none") {
       env[gatewayKeyName] = credential;
+      credentialEnvKey = gatewayKeyName;
     }
     // The provider registry still resolves its own env key at launch time
     // (ACP lane reads it server-side); keep it projected as well.
@@ -150,5 +168,5 @@ export function managedProviderRouting(
     hermesConfig = `model:\n  provider: ${JSON.stringify(provider)}\n  default: ${JSON.stringify(model)}\n  base_url: ${JSON.stringify(baseUrl)}\n  api_mode: "chat_completions"\n${route.auth === "none" ? "" : `  key_env: ${JSON.stringify(gatewayKeyName)}\n  api_key: "\${${gatewayKeyName}}"\n`}`;
   }
   if (openrouter && hermesConfig) hermesConfig += `  default_headers: ${JSON.stringify(OPENROUTER_ATTRIBUTION_HEADERS)}\n`;
-  return { env, config, codexConfig, hermesConfig };
+  return { env, config, codexConfig, hermesConfig, credentialEnvKey };
 }

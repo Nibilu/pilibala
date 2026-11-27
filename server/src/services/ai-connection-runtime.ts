@@ -656,6 +656,11 @@ export async function prepareManagedAiRuntime(
         ...input.config,
         ...projected?.config,
         ...(routing ? { managedAiRouting: routing } : {}),
+        // The env var that carries the projected credential for this harness.
+        // Consumers must read it by name — positional "first non-empty value"
+        // guesses grab managed-home paths (HOME, CODEX_HOME, …) that share the
+        // env object and authenticate with a filesystem path instead of a key.
+        ...(projected?.credentialEnvKey ? { managedAiCredentialEnvKey: projected.credentialEnvKey } : {}),
         env,
         managedAiConnection: { ...attribution, identity, sessionIdentity },
       },

@@ -221,3 +221,54 @@ describe("provider routing", () => {
     for (const key of ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]) expect(projected.env).not.toHaveProperty(key);
   });
 });
+
+describe("managedProviderRouting credentialEnvKey (AMB-372)", () => {
+  const localRouting = {
+    kind: "local", protocol: "chat", auth: "bearer", baseUrl: "http://127.0.0.1:3002/v1",
+    models: [{ id: "glm-5.3" }],
+  } as const;
+
+  it("names the projected credential env var per harness", () => {
+    expect(
+      managedProviderRouting({ ...localRouting }, "pi_local", "fixture-key", "glm-5.3").credentialEnvKey,
+    ).toBe("PILIBALA_PI_GATEWAY_KEY");
+    expect(
+      managedProviderRouting({ kind: "gateway", protocol: "chat", auth: "bearer", models: [], baseUrl: "https://gw.example/v1" }, "codex_local", "fixture-key", "m").credentialEnvKey,
+    ).toBe("PILIBALA_AI_PROVIDER_KEY");
+    expect(
+      managedProviderRouting({ kind: "gateway", protocol: "chat", auth: "bearer", models: [], baseUrl: "https://gw.example/v1" }, "claude_local", "fixture-key", "m").credentialEnvKey,
+    ).toBe("ANTHROPIC_AUTH_TOKEN");
+    expect(
+      managedProviderRouting({ kind: "gateway", protocol: "chat", auth: "api_key", models: [], baseUrl: "https://gw.example/v1" }, "claude_local", "fixture-key", "m").credentialEnvKey,
+    ).toBe("ANTHROPIC_API_KEY");
+    expect(
+      managedProviderRouting({ ...localRouting }, "opencode_local", "fixture-key", "glm-5.3").credentialEnvKey,
+    ).toBe("PILIBALA_AI_PROVIDER_KEY");
+    expect(
+      managedProviderRouting({ kind: "openrouter", auth: "bearer" }, "pi_local", "fixture-key", "m").credentialEnvKey,
+    ).toBe("OPENROUTER_API_KEY");
+    const hermes = managedProviderRouting(
+      { kind: "gateway", protocol: "chat", auth: "bearer", models: [], baseUrl: "https://gw.example/v1" },
+      "hermes_local", "fixture-key", "vendor/model",
+    );
+    expect(hermes.credentialEnvKey).toBe("PILIBALA_CUSTOM_KEY");
+    expect(hermes.env.PILIBALA_CUSTOM_KEY).toBe("fixture-key");
+  });
+
+  it("omits the credential key for auth-none projections", () => {
+    const projected = managedProviderRouting(
+      { ...localRouting, auth: "none" }, "pi_local", "", "glm-5.3",
+    );
+    expect(projected.credentialEnvKey).toBeUndefined();
+    expect(projected.env).not.toHaveProperty("PILIBALA_PI_GATEWAY_KEY");
+  });
+
+  it("keeps the pi model prefix idempotent", () => {
+    const once = managedProviderRouting({ ...localRouting }, "pi_local", "fixture-key", "glm-5.3");
+    expect(once.config.model).toBe("pilibala/glm-5.3");
+    const twice = managedProviderRouting({ ...localRouting }, "pi_local", "fixture-key", "pilibala/glm-5.3");
+    expect(twice.config.model).toBe("pilibala/glm-5.3");
+    const providers = JSON.parse(String(once.env.PILIBALA_PI_PROVIDERS));
+    expect(providers.pilibala.models.map((m: { id: string }) => m.id)).toEqual(["glm-5.3"]);
+  });
+});

@@ -633,7 +633,16 @@ export function agentEnvironmentTestService(db: Db, pluginWorkerManager?: Plugin
       const baseUrl = typeof managedRouting?.baseUrl === "string" ? managedRouting.baseUrl.trim() : "";
       const noAuth = managedRouting?.auth === "none";
       const env = parseObject(context.config.env);
-      const projectedKey = Object.values(env).find((value): value is string => typeof value === "string" && value.length > 0);
+      // Read the projected credential BY NAME. The managed runtime env shares
+      // the object with managed-home paths (HOME, CODEX_HOME, …); a positional
+      // "first non-empty value" guess authenticated with a filesystem path
+      // and failed every gateway/local probe with http_401.
+      const credentialEnvKey = typeof context.config.managedAiCredentialEnvKey === "string"
+        ? context.config.managedAiCredentialEnvKey
+        : undefined;
+      const projectedKey = credentialEnvKey
+        ? (typeof env[credentialEnvKey] === "string" && env[credentialEnvKey] ? env[credentialEnvKey] : undefined)
+        : Object.values(env).find((value): value is string => typeof value === "string" && value.length > 0);
       const discovery = await discoverOpenAiCompatibleModels(baseUrl, noAuth ? undefined : projectedKey);
       if (!baseUrl || !discovery.models.length) {
         result.status = "fail";
