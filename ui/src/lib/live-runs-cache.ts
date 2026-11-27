@@ -52,8 +52,16 @@ export function liveRunRefetchInterval(
   connected: boolean,
   state: { status: "pending" | "error" | "success"; data: unknown },
   fallbackMs: number,
+  reconcileMs?: number,
 ): number | false {
-  return connected && state.status === "success" && (state.data === null || (Array.isArray(state.data) && state.data.length === 0))
-    ? false
-    : fallbackMs;
+  // An empty live-runs list on a connected page used to stop refetching
+  // entirely. If that one response raced a run's start (or errored into an
+  // empty projection), nothing ever corrected it — no mid-run status event
+  // fires for an already-running run — so the page never learned about the
+  // run and its transcript stayed frozen until the run went terminal. Keep a
+  // slow reconciliation poll in that case instead of stopping outright.
+  if (connected && state.status === "success" && (state.data === null || (Array.isArray(state.data) && state.data.length === 0))) {
+    return reconcileMs ?? false;
+  }
+  return fallbackMs;
 }

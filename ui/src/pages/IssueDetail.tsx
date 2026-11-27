@@ -409,6 +409,12 @@ import { taskStatusIconProps } from "@/lib/task-status-presentation";
 // depend on it. Reusing one shared reference keeps those values stable.
 const EMPTY_ISSUES: Issue[] = [];
 const EMPTY_PROJECTS: Project[] = [];
+// Slow reconciliation poll for an EMPTY live-runs list on a connected page.
+// Stopping outright on an empty response loses a run whose start raced the
+// fetch (no mid-run status event ever corrects it), leaving the transcript
+// frozen until the run goes terminal. 15s is cheap (range-free list read) and
+// bounded relative to a multi-minute run.
+const LIVE_RUN_RECONCILE_MS = 15_000;
 
 type StopAndFinalizeRunError = Error & {
   runCancelledBeforeStatusUpdateFailed?: boolean;
@@ -1535,7 +1541,7 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
     queryKey: queryKeys.issues.liveRuns(issueQueryRef),
     queryFn: () => heartbeatsApi.liveRunsForIssue(issueQueryRef),
     enabled: !!issueId,
-    refetchInterval: (query) => liveRunRefetchInterval(hasLiveConnection, query.state, hasLiveConnection ? 5000 : 1000),
+    refetchInterval: (query) => liveRunRefetchInterval(hasLiveConnection, query.state, hasLiveConnection ? 5000 : 1000, LIVE_RUN_RECONCILE_MS),
     placeholderData:
       keepPreviousDataForSameQueryTail<LiveRunForIssue[]>(issueQueryRef),
   });
@@ -3640,7 +3646,7 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
       queryKey: queryKeys.issues.liveRuns(issueId!),
       queryFn: () => heartbeatsApi.liveRunsForIssue(issueId!),
       enabled: !!issueId,
-      refetchInterval: (query) => liveRunRefetchInterval(hasLiveConnection, query.state, 3000),
+      refetchInterval: (query) => liveRunRefetchInterval(hasLiveConnection, query.state, 3000, LIVE_RUN_RECONCILE_MS),
       select: (runs) => runs.length,
       placeholderData: keepPreviousDataForSameQueryTail<LiveRunForIssue[]>(
         issueId ?? "pending",

@@ -68,9 +68,16 @@ describe("liveRunRefetchInterval", () => {
     expect(liveRunRefetchInterval(true, { status, data: [] }, 1000)).toBe(1000);
     expect(liveRunRefetchInterval(true, { status, data: null }, 3000)).toBe(3000);
   });
-  it.each([null, []])("stops known-empty polling with a connected company for %j", (data) => {
+  it.each([null, []])( "stops known-empty polling with a connected company for %j", (data) => {
     expect(liveRunRefetchInterval(true, { status: "success", data }, 1000)).toBe(false);
     expect(liveRunRefetchInterval(false, { status: "success", data }, 1000)).toBe(1000);
+  });
+  it.each([null, []])("reconciles a known-empty connected query when a reconcile interval is provided for %j", (data) => {
+    expect(liveRunRefetchInterval(true, { status: "success", data }, 5000, 15_000)).toBe(15_000);
+    // Non-empty data keeps the normal cadence.
+    expect(liveRunRefetchInterval(true, { status: "success", data: [run("a", "running")] }, 5000, 15_000)).toBe(5000);
+    // A disconnected page keeps its fast fallback.
+    expect(liveRunRefetchInterval(false, { status: "success", data }, 1000, 15_000)).toBe(1000);
   });
 
   it.each([undefined, {}, [run("active", "running")], "invalid", 0])("preserves polling for unknown or active data %j", (data) => {
