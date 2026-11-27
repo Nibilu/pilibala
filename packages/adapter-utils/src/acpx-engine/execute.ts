@@ -4866,6 +4866,18 @@ export function createAcpxEngineExecutor(deps: AcpxEngineExecutorOptions = {}) {
           },
           getRuntimeParentContext,
         };
+        // Orthogonal output contract (docs/design/quiet-verbose-output-contract.md):
+        // `verbose` is the diagnostic axis. ACPX's own runtime verbose writes to
+        // the SERVER process stderr (never the run log), so the upstream-native
+        // claude-only hardcode above stays untouched. An adapter-level opt-in
+        // emits a compact diagnostics block into the RUN LOG's stderr stream
+        // instead — that is where the raw view can actually show it.
+        if (ctx.config?.verbose === true) {
+          await ctx.onLog(
+            "stderr",
+            `[pilibala][verbose] ACPX runtime: agent=${prepared.acpxAgent} mode=${prepared.mode} provider_process=${providerProcessReason} timeout=${prepared.timeoutSec}s mcp_servers=${prepared.mcpServers.length} agent_command=${prepared.agentCommand ?? "default"}\n`,
+          );
+        }
         // Open Q2: split the ~7s `acp.handshake` into the two in-repo-observable
         // sub-phases — the ACP runtime construction (`createRuntime`) vs the session
         // establishment envelope (`ensureSession`). The patched spawn lifecycle
