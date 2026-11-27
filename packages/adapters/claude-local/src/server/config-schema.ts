@@ -68,6 +68,13 @@ export function getConfigSchema(): AdapterConfigSchema {
         hint: "Defaults to 0, which closes the ACP process after each run while retaining persistent session state.",
         meta: acpVisible,
       },
+      {
+        key: "quiet",
+        label: "Quiet output",
+        type: "toggle",
+        default: false,
+        hint: "Simplify the run transcript display (presentation-only): hides thinking text and tool-result bodies in the Pilibala UI; hint rows, replies, approvals and results stay. The run log is unaffected. No Verbose toggle exists here: Claude's CLI --verbose is a stream-json protocol requirement and its ACP runtime diagnostics are always on, so there is nothing to switch.",
+      },
     ],
   };
 }

@@ -90,9 +90,25 @@ Notes:
 | Schema declaration | `packages/adapters/hermes/src/server/config-schema.ts` | hints state the orthogonal semantics + engine scope |
 | Other adapters | per-adapter config-schema + execute | audit vs this contract; undeclared/unwired toggles must not silently no-op |
 
-## Adapter audit baseline (2026-11-27)
+## Adapter audit baseline (2026-11-27, AMB-389)
 
-- `hermes_local` (engines: acp | cli): contract target of AMB-386/387/388.
-- Other adapters: audited under AMB-389 — verdicts and file:line evidence are
-  recorded in the board task comments; deviations get fixed or their schema
-  hint states the limitation.
+Full audit of every adapter package (13 adapter types + inline registry
+entries). Verdicts after the AMB-386/387/388/389 fixes:
+
+| Adapter | Verdict | Notes |
+|---|---|---|
+| `hermes_local` (acp \| cli) | aligned | AMB-386/387/388 |
+| `pi_local` | aligned | quiet decoupled from run-log compaction (AMB-389); compaction stays an internal `stdoutLogMode` log-hygiene default; verbose keeps the lossless raw log |
+| `claude_local` | aligned | quiet declared (presentation axis); NO verbose toggle — Claude CLI `--verbose` is a stream-json protocol requirement and its ACP runtime diagnostics are always on, so a toggle would be a silent no-op (hint states this) |
+| `hermes_gateway`, `codex_local`, `gemini_local`, `grok_local`, `kimi_local`, `opencode_local`, `cursor`, `cursor_cloud`, `openclaw_gateway`, `pilibala_runner`, `process`, `http` | compliant | neither key declared, no execution-side reads; the shared UI quiet filter applies to any adapter that sets `adapterConfig.quiet` |
+| acpx engine (shared) | aligned | AMB-388: adapterConfig `verbose` emits run-log stderr diagnostics; upstream-native claude-only acpx verbose untouched |
+
+Known upstream-native behaviors left alone: Claude CLI hardcoded
+`--verbose` (protocol requirement), acpx runtime verbose claude-only hardcode,
+Hermes CLI `quiet_mode=not verbose` init-print coupling (stdout-only, stripped
+by the UI quiet filter as a plain stdout line).
+
+Behavior-change note (pi_local): an agent with explicit `quiet=false` and
+`verbose=false` previously persisted the RAW log; it now persists the compact
+(default) log — set `verbose=true` to restore the raw forensic log. Dev
+instance scan: only one test agent (`dfdfdf`) matched that combination.
