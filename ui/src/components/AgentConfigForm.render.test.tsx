@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Agent, Environment, UserSecretDefinition } from "@pilibalaai/shared";
+import type { Agent, AiManagedConnectionSummary, Environment, UserSecretDefinition } from "@pilibalaai/shared";
 import { getEnvironmentCapabilities } from "@pilibalaai/shared";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ToastProvider } from "../context/ToastContext";
@@ -5069,12 +5069,12 @@ describe("AgentConfigForm model provider catalog", () => {
   });
 
   it("rebinds the AI connection and clears the stale provider when the chosen model leaves the bound connection's catalog", async () => {
-    const nvidiaConnection = {
+    const nvidiaConnection: AiManagedConnectionSummary = {
       id: "00000000-0000-4000-8000-000000000a01", grantId: "00000000-0000-4000-8000-000000000a02", companyId: "company-1", provider: "openai", method: "api_key",
       name: "个人 integrate.api.nvidia.com", ownership: "personal", ownerUserId: "you", isDefault: true, status: "connected",
       routing: { kind: "gateway", protocol: "chat", auth: "bearer", baseUrl: "https://integrate.api.nvidia.com/v1", models: [{ id: "nvidia/model-3" }, { id: "nvidia/model-7" }] },
     };
-    const magaaiChat = {
+    const magaaiChat: AiManagedConnectionSummary = {
       id: "00000000-0000-4000-8000-000000000b01", grantId: "00000000-0000-4000-8000-000000000b02", companyId: "company-1", provider: "openai", method: "api_key",
       name: "Company magaai_chat", ownership: "shared", isDefault: false, status: "connected",
       routing: { kind: "gateway", protocol: "chat", auth: "bearer", baseUrl: "https://api.magaai.shop", models: [{ id: "moonshotai/Kimi-K3.1-Pro" }, { id: "zai-org/GLM-5.3-Flash" }] },
