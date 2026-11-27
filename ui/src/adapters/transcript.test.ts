@@ -362,8 +362,10 @@ describe("createTranscriptBuilder (incremental streaming)", () => {
       expect(entries.map((e) => e.kind)).toEqual(["thinking", "tool_call", "assistant"]);
     });
 
-    it("verbose overrides quiet", () => {
-      expect(quietTranscriptFromAdapterConfig({ quiet: true, verbose: true })).toBe(false);
+    it("quiet and verbose are orthogonal — verbose never cancels quiet (AMB-386)", () => {
+      expect(quietTranscriptFromAdapterConfig({ quiet: true, verbose: true })).toBe(true);
+      expect(quietTranscriptFromAdapterConfig({ quiet: true, verbose: false })).toBe(true);
+      expect(quietTranscriptFromAdapterConfig({ quiet: false, verbose: true })).toBe(false);
       expect(quietTranscriptFromAdapterConfig({ quiet: true })).toBe(true);
       expect(quietTranscriptFromAdapterConfig({})).toBe(false);
       expect(quietTranscriptFromAdapterConfig(null)).toBe(false);

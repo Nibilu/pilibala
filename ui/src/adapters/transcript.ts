@@ -7,15 +7,14 @@ type RedactionOptions = { enabled: boolean };
 
 /**
  * Quiet-output control for transcripts, mirroring the Agent adapterConfig
- * `quiet` / `verbose` toggles. These are presentation-only controls: they
- * change how much transcript detail the UI shows, never what the agent
- * executes. `verbose` wins over `quiet` when both are set.
+ * `quiet` toggle. Per the orthogonal output contract
+ * (docs/design/quiet-verbose-output-contract.md), `quiet` is the
+ * presentation-density axis and `verbose` is the diagnostic-logging axis:
+ * they are independent, and verbose never cancels quiet.
  */
 export function quietTranscriptFromAdapterConfig(config: unknown): boolean {
   if (!config || typeof config !== "object") return false;
-  const record = config as Record<string, unknown>;
-  if (record.verbose === true) return false;
-  return record.quiet === true;
+  return (config as Record<string, unknown>).quiet === true;
 }
 
 /**
