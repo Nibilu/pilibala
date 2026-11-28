@@ -193,6 +193,7 @@ import {
   WORKSPACE_WORKTREE_REQUIRES_PROJECT_REMEDIATION,
   type ParsedExecutionWorkspaceMode,
 } from "./execution-workspace-policy.js";
+import { assertWorkspaceSettingsMatchBoundWorkspace } from "./execution-workspace-settings-guard.js";
 import { mergeExecutionWorkspaceConfig } from "./execution-workspaces.js";
 import {
   buildIndependentTaskWorkspaceSettings,
@@ -11579,6 +11580,14 @@ export function issueService(db: Db) {
           executionWorkspaceId: nextExecutionWorkspaceId ?? null,
           executionWorkspacePreference:
             nextExecutionWorkspacePreference ?? null,
+          executionWorkspaceSettings: issueData.executionWorkspaceSettings,
+        });
+      }
+      if (issueData.executionWorkspaceSettings !== undefined) {
+        await assertWorkspaceSettingsMatchBoundWorkspace({
+          db: dbOrTx,
+          companyId: existing.companyId,
+          executionWorkspaceId: nextExecutionWorkspaceId,
           executionWorkspaceSettings: issueData.executionWorkspaceSettings,
         });
       }
