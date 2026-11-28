@@ -47,6 +47,66 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("wake input workspace transport", () => {
+  it("carries the realized task workspace in the runtime identity when the execution target has one", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/v1/runs")) {
+        bodies.push(JSON.parse(String(init?.body ?? "{}")));
+        return new Response(JSON.stringify({ run_id: "run-hermes-ws", status: "started" }), { status: 200 });
+      }
+      if (url.endsWith("/events")) {
+        return new Response(sseStream([
+          "event: message.delta", `data: ${JSON.stringify({ delta: "ok" })}`, "",
+          "event: run.completed", `data: ${JSON.stringify({ status: "completed", output: "ok" })}`, "",
+        ].join("\n")), { status: 200, headers: { "content-type": "text/event-stream" } });
+      }
+      return new Response(JSON.stringify({ status: "completed" }), { status: 200 });
+    }));
+
+    const ctx = makeCtx({ apiBaseUrl: "http://127.0.0.1:8642", apiKey: "k", timeoutSec: 5 });
+    ctx.executionTarget = {
+      kind: "local",
+      workspaceRealization: {
+        mode: "copy",
+        authoritativeRoot: "/repo/.pilibala/worktrees/AMB-417-audit",
+        pathAliases: [],
+        outboundRestorePaths: [],
+      },
+    };
+    await execute(ctx);
+
+    const input = String(bodies[0]?.input ?? "");
+    expect(input).toContain("- Task workspace: /repo/.pilibala/worktrees/AMB-417-audit (Pilibala-realized, copy)");
+    expect(input).toContain("If this path is reachable from your environment");
+  });
+
+  it("omits the workspace section when the execution target has no realization", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/v1/runs")) {
+        bodies.push(JSON.parse(String(init?.body ?? "{}")));
+        return new Response(JSON.stringify({ run_id: "run-hermes-plain", status: "started" }), { status: 200 });
+      }
+      if (url.endsWith("/events")) {
+        return new Response(sseStream([
+          "event: message.delta", `data: ${JSON.stringify({ delta: "ok" })}`, "",
+          "event: run.completed", `data: ${JSON.stringify({ status: "completed", output: "ok" })}`, "",
+        ].join("\n")), { status: 200, headers: { "content-type": "text/event-stream" } });
+      }
+      return new Response(JSON.stringify({ status: "completed" }), { status: 200 });
+    }));
+
+    const ctx = makeCtx({ apiBaseUrl: "http://127.0.0.1:8642", apiKey: "k", timeoutSec: 5 });
+    await execute(ctx);
+
+    const input = String(bodies[0]?.input ?? "");
+    expect(input).not.toContain("- Task workspace:");
+  });
+});
+
 describe("resolveSessionKey", () => {
   it("derives issue-scoped session keys by default", () => {
     expect(

@@ -400,6 +400,16 @@ function buildInput(ctx: AdapterExecutionContext, pilibalaApiUrl: string | null)
     promptTemplate && !isPilibalaRecoveryWakePayload(ctx.context.pilibalaWake)
       ? renderTemplate(renderConditionalSections(promptTemplate, templateVars), templateVars)
       : "";
+  // Task workspace transport (AMB-401): the server realizes the workspace and
+  // attaches it to the execution target, but the remote Hermes process never
+  // receives it — its terminal stays wherever the gateway session was spawned
+  // (observed: /home/amber while the realization was the project primary).
+  // Surface the authoritative root as runtime identity so a Hermes host that
+  // shares the filesystem can work in the task workspace; the wording stays
+  // honest about the best-effort nature (a remote host cannot reach host
+  // paths, and the agent must say so instead of pretending isolation).
+  const workspaceRealization = ctx.executionTarget?.workspaceRealization ?? null;
+  const workspaceRoot = nonEmpty(workspaceRealization?.authoritativeRoot);
   const lines = [
     `You are ${ctx.agent.name}, an AI agent employee in a Pilibala-managed company.`,
     "",
@@ -409,6 +419,12 @@ function buildInput(ctx: AdapterExecutionContext, pilibalaApiUrl: string | null)
     `- Run ID: ${ctx.runId}`,
     ...(pilibalaApiUrl ? [`- Pilibala API URL: ${pilibalaApiUrl}`] : []),
     ...(issueWorkMode ? [`- Issue work mode: ${issueWorkMode}`] : []),
+    ...(workspaceRoot
+      ? [
+          `- Task workspace: ${workspaceRoot} (Pilibala-realized, ${workspaceRealization?.mode ?? "in_place"})`,
+          "- If this path is reachable from your environment, perform all file operations inside it (change into it first). If it is not reachable, state that explicitly in your reply instead of working elsewhere.",
+        ]
+      : []),
     "",
     ...(ctx.context.conversationMode === true || isPilibalaRecoveryWakePayload(ctx.context.pilibalaWake)
       ? []
