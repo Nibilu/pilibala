@@ -62,6 +62,21 @@ export function composerCatalogProvider(agent: Agent | undefined): string | unde
     ? "openrouter" : undefined;
 }
 
+/**
+ * hermes_local model discovery is provider-scoped: the harness catalog is empty
+ * without a provider, so a chat/task composer that asks for the unscoped
+ * catalog lists no models at all and its keyword search matches nothing
+ * (AMB-408). An explicit agent provider is the pair a run can keep, so the
+ * composer catalogs by it; behind "Default (Hermes config)" the host's
+ * detected provider is the fallback the setup page uses (AMB-326 P1).
+ */
+export function composerHermesCatalogProvider(agent: Agent | undefined): string | undefined {
+  if (agent?.adapterType !== "hermes_local") return undefined;
+  const provider = String(agent.adapterConfig.provider ?? "").trim();
+  if (!provider || provider === "auto") return undefined;
+  return provider;
+}
+
 export function composerEfforts(agent: Agent | undefined, model: string, catalogIds: readonly string[]): readonly string[] {
   if (!agent) return [];
   const effectiveModel = model.trim() || (agent.adapterType === "grok_local" ? DEFAULT_GROK_LOCAL_MODEL

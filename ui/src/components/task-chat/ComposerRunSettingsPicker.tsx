@@ -22,8 +22,8 @@ import type { InlineEntityOption } from "@/components/InlineEntitySelector";
 import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  composerCatalogProvider, composerDefaultModel, composerEfforts, composerFastAvailable, DEFAULT_COMPOSER_RUN_SETTINGS,
-  EFFORT_LABELS, readComposerRunSettings, supportsComposerModel,
+  composerCatalogProvider, composerDefaultModel, composerEfforts, composerFastAvailable, composerHermesCatalogProvider,
+  DEFAULT_COMPOSER_RUN_SETTINGS, EFFORT_LABELS, readComposerRunSettings, supportsComposerModel,
   type ComposerRunSettings,
 } from "./composer-run-settings";
 import "./composer-run-settings.css";
@@ -152,15 +152,37 @@ export function ComposerRunSettingsPicker({
   const acpxAgent = agent?.adapterType === "pilibala_runner" && provider === "acpx" && typeof agent.adapterConfig.acpxAgent === "string" ? agent.adapterConfig.acpxAgent : undefined;
   const nativeCatalogScope = JSON.stringify(nativeCatalog ?? null);
   const requestNativeModels = Boolean(nativeCatalog && open && view !== "agents" && !modelOptionsOverride);
+  // hermes_local discovery is provider-scoped: the harness catalog comes back
+  // empty without a provider, so the composer would list no models and its
+  // keyword search would match nothing (AMB-408). Scope the request like the
+  // setup page does — the agent's own provider, else the host Hermes config's
+  // detected provider behind "Default (Hermes config)" (AgentConfigForm,
+  // AMB-326 P1) — and hold the catalog back until that provider is known.
+  const hermesProvider = composerHermesCatalogProvider(agent);
+  // A bound connection serves its own directory — the host probe is only
+  // needed for the harness-catalog fallback.
+  const hermesProviderPending = Boolean(companyId && agent?.adapterType === "hermes_local"
+    && !hermesProvider && !connectionCatalogActive);
+  const detectedHermesModel = useQuery({
+    queryKey: queryKeys.agents.detectModel(companyId ?? "none", "hermes_local"),
+    queryFn: () => agentsApi.detectModel(companyId!, "hermes_local"),
+    enabled: hermesProviderPending,
+    staleTime: 0,
+    retry: false,
+  });
+  const catalogProvider = agent?.adapterType === "hermes_local"
+    ? (hermesProvider ?? detectedHermesModel.data?.provider ?? undefined)
+    : provider;
+  const catalogProviderPending = hermesProviderPending && detectedHermesModel.isPending;
   const { data: fetchedModels = [], isPending: modelsPending, refetch: refreshModels } = useQuery({
     queryKey: agent && modelSupported
-      ? [...queryKeys.agents.adapterModels(companyId, agent.adapterType, agent.defaultEnvironmentId ?? null, provider), poolId ?? null, nativeCatalog ?? null, acpxAgent ?? null]
+      ? [...queryKeys.agents.adapterModels(companyId, agent.adapterType, agent.defaultEnvironmentId ?? null, catalogProvider), poolId ?? null, nativeCatalog ?? null, acpxAgent ?? null]
       : ["agents", "composer-models", "none"],
     queryFn: () => agentsApi.adapterModels(companyId, agent!.adapterType, {
-      environmentId: agent!.defaultEnvironmentId ?? null, provider, poolId, acpxAgent, ...nativeCatalog,
+      environmentId: agent!.defaultEnvironmentId ?? null, provider: catalogProvider, poolId, acpxAgent, ...nativeCatalog,
     }),
     ...(nativeCatalog ? ACCOUNT_BOUND_MODEL_DISCOVERY_QUERY_OPTIONS : {}),
-    enabled: Boolean(agent && modelSupported && !modelOptionsOverride && !connectionCatalogActive
+    enabled: Boolean(agent && modelSupported && !modelOptionsOverride && !connectionCatalogActive && !catalogProviderPending
       && (!nativeCatalog || requestNativeModels)),
   });
   useEffect(() => {

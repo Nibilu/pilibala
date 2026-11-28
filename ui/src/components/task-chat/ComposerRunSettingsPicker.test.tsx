@@ -374,6 +374,7 @@ describe("composer assignee picker", () => {
     } as const;
     const boundAgent = { ...agent, adapterType: "hermes_local", adapterConfig: {},
       runtimeConfig: { aiConnection: binding } } as Agent;
+    vi.spyOn(agentsApi, "detectModel").mockResolvedValue(null);
     const loadModels = vi.spyOn(agentsApi, "adapterModels");
     vi.spyOn(aiConnectionsApi, "list").mockResolvedValueOnce({
       currentUserId: "user-1",
@@ -412,6 +413,7 @@ describe("composer assignee picker", () => {
     } as const;
     const boundAgent = { ...agent, adapterType: "hermes_local", adapterConfig: {},
       runtimeConfig: { aiConnection: binding } } as Agent;
+    vi.spyOn(agentsApi, "detectModel").mockResolvedValue(null);
     const loadModels = vi.spyOn(agentsApi, "adapterModels").mockResolvedValue([]);
     vi.spyOn(aiConnectionsApi, "list").mockResolvedValue({
       currentUserId: "user-1",
@@ -522,6 +524,8 @@ describe("composer assignee picker", () => {
     vi.spyOn(aiConnectionsApi, "list").mockResolvedValueOnce({
       currentUserId: "user-1", canManageConnections: true, connections: [],
     });
+    // No host Hermes config to scope by: the unscoped catalog is all there is.
+    vi.spyOn(agentsApi, "detectModel").mockResolvedValue(null);
     const loadModels = vi.spyOn(agentsApi, "adapterModels").mockResolvedValue([
       { id: "hermes-model", label: "Hermes Model" },
     ]);
@@ -535,6 +539,54 @@ describe("composer assignee picker", () => {
     const choices = [...document.querySelectorAll<HTMLButtonElement>('button[role="option"]')]
       .map((item) => item.textContent ?? "");
     expect(choices.some((item) => item.includes("Hermes Model"))).toBe(true);
+  });
+
+  // AMB-408: hermes_local discovery is provider-scoped — the harness catalog
+  // comes back empty without a provider, so the composer listed no models and
+  // its keyword search matched nothing. The composer scopes the request like
+  // the setup page: the agent's own provider, else the host Hermes config's
+  // detected provider behind "Default (Hermes config)".
+  it("scopes hermes_local discovery by the host's detected provider so keyword search reaches a catalog", async () => {
+    const hermesAgent = { ...agent, adapterType: "hermes_local", adapterConfig: {} } as Agent;
+    vi.spyOn(agentsApi, "detectModel").mockResolvedValue({
+      model: "z-ai/glm-5.3-flash", provider: "nvidia", source: "config",
+    });
+    const loadModels = vi.spyOn(agentsApi, "adapterModels").mockResolvedValue([
+      { id: "minimaxai/minimax-m3.1-flash", label: "MiniMax M3.1 Flash" },
+      { id: "z-ai/glm-5.3-flash", label: "GLM 5.3 Flash" },
+    ]);
+    const onSettingsChange = vi.fn();
+    render(vi.fn(), onSettingsChange, true, { agents: new Map([[agent.id, hermesAgent]]), settings: null });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(loadModels).toHaveBeenCalledWith("company-1", "hermes_local", expect.objectContaining({ provider: "nvidia" }));
+    await click("Select model and effort");
+    await click("Choose exact model");
+    const search = document.querySelector<HTMLInputElement>('input[aria-label="Search or paste a model ID"]')!;
+    expect(search).not.toBeNull();
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(search, "minimax");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const texts = [...document.querySelectorAll<HTMLButtonElement>('button[role="option"]')].map((item) => item.textContent ?? "");
+    expect(texts.some((t) => t.includes("MiniMax M3.1 Flash"))).toBe(true);
+    expect(texts.some((t) => t.includes("GLM 5.3 Flash"))).toBe(false);
+    await click("MiniMax M3.1 Flash");
+    expect(onSettingsChange).toHaveBeenLastCalledWith({ model: "minimaxai/minimax-m3.1-flash", effort: null, fast: false });
+  });
+
+  it("keeps an explicit hermes provider as the catalog scope", async () => {
+    const hermesAgent = { ...agent, adapterType: "hermes_local",
+      adapterConfig: { provider: "nvidia", model: "z-ai/glm-5.3-flash" } } as Agent;
+    const detect = vi.spyOn(agentsApi, "detectModel");
+    const loadModels = vi.spyOn(agentsApi, "adapterModels").mockResolvedValue([
+      { id: "z-ai/glm-5.3-flash", label: "GLM 5.3 Flash" },
+    ]);
+    render(vi.fn(), vi.fn(), true, { agents: new Map([[agent.id, hermesAgent]]), settings: null });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(detect).not.toHaveBeenCalled();
+    expect(loadModels).toHaveBeenCalledWith("company-1", "hermes_local", expect.objectContaining({ provider: "nvidia" }));
   });
 
   it("preserves settings when the selected assignee is chosen again", async () => {

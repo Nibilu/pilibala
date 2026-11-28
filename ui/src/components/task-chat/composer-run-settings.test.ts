@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Agent } from "@pilibalaai/shared";
 import {
-  composerCatalogProvider, composerDefaultModel, composerEfforts, composerFastAvailable, mergeComposerRunSettings,
-  readComposerRunSettings, supportsComposerModel,
+  composerCatalogProvider, composerDefaultModel, composerEfforts, composerFastAvailable, composerHermesCatalogProvider,
+  mergeComposerRunSettings, readComposerRunSettings, supportsComposerModel,
 } from "./composer-run-settings";
 
 const agent = (adapterType: Agent["adapterType"], provider?: string) => ({
@@ -55,6 +55,18 @@ describe("composer run settings", () => {
     expect(composerFastAvailable(agent("codex_local"), "custom-private-model")).toBe(false);
     expect(supportsComposerModel(agent("process"))).toBe(false);
     expect(composerCatalogProvider({ ...agent("opencode_local"), adapterConfig: { model: "openrouter/qwen/qwen3-coder-next" } })).toBe("openrouter");
+  });
+
+  it("scopes hermes model discovery by the agent's own provider only", () => {
+    // Without a provider the harness catalog is empty (the hermes adapter
+    // refuses an unscoped listing), so the composer must ask for the host's
+    // detected provider instead (AMB-408).
+    expect(composerHermesCatalogProvider(agent("hermes_local"))).toBeUndefined();
+    expect(composerHermesCatalogProvider(agent("hermes_local", "auto"))).toBeUndefined();
+    expect(composerHermesCatalogProvider(agent("hermes_local", "nvidia"))).toBe("nvidia");
+    expect(composerHermesCatalogProvider(agent("hermes_local", " nvidia "))).toBe("nvidia");
+    expect(composerHermesCatalogProvider(agent("codex_local", "nvidia"))).toBeUndefined();
+    expect(composerHermesCatalogProvider(undefined)).toBeUndefined();
   });
 
   it("preserves unrelated task overrides while changing or resetting run settings", () => {
